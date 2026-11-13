@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Photo</title>
+<title>One Print</title>
 <style>
   :root {
     --bg: #e8e6e1;
@@ -12,6 +12,8 @@
     --pad: clamp(12px, 2.4vmin, 28px);   /* white frame width */
     --gutter: clamp(24px, 7vmin, 80px);  /* space around the print */
   }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #1d1c1a; --ink: #8c8880; color-scheme: dark } }
+  :root[data-theme="dark"] { --bg: #1d1c1a; --ink: #8c8880; color-scheme: dark }
   * { box-sizing: border-box; margin: 0; }
   html, body { height: 100%; }
   body {
@@ -64,14 +66,14 @@
 <script>
   // Placeholder photos from Unsplash (swap these IDs for your own images).
   const photos = [
-    "1470071459604-3b5ec3a7fe05",
-    "1501785888041-af3ef285b470",
-    "1482192596544-9eb780fc7f66",
-    "1494500764479-0c8f2919a3d8",
-    "1500530855697-b586d89ba3ee",
-    "1441974231531-c6227db76b6e",
-    "1519681393784-d120267933ba",
     "1505765050516-f72dcac9c60e",
+    "1494500764479-0c8f2919a3d8",
+    "1482192596544-9eb780fc7f66",
+    "1500530855697-b586d89ba3ee",
+    "1470071459604-3b5ec3a7fe05",
+    "1441974231531-c6227db76b6e",
+    "1501785888041-af3ef285b470",
+    "1519681393784-d120267933ba",
   ];
   const src = id => `https://images.unsplash.com/photo-${id}?auto=format&fit=max&w=2000&q=80`;
 
