@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Photo</title>
+<style>
+  :root {
+    --bg: #e8e6e1;
+    --frame: #ffffff;
+    --ink: #6b6862;
+    --pad: clamp(12px, 2.4vmin, 28px);   /* white frame width */
+    --gutter: clamp(24px, 7vmin, 80px);  /* space around the print */
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+    letter-spacing: .12em;
+    overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .stage { position: fixed; inset: 0; overflow: hidden; touch-action: pan-y; cursor: grab; }
+  .stage.dragging { cursor: grabbing; }
+  .track { display: flex; height: 100%; will-change: transform; }
+  .track.anim { transition: transform .55s cubic-bezier(.22, .8, .24, 1); }
+  .slide {
+    flex: 0 0 100%;
+    display: grid; place-items: center;
+    padding: var(--gutter) var(--gutter) calc(var(--gutter) + 16px);
+  }
+  .frame {
+    background: var(--frame);
+    padding: var(--pad);
+    box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 12px 40px -12px rgba(0,0,0,.22);
+    line-height: 0;
+    opacity: 0; transition: opacity .6s ease;
+  }
+  .frame.ready { opacity: 1; }
+  .frame img {
+    display: block;
+    max-width: calc(100vw - 2 * var(--gutter) - 2 * var(--pad));
+    max-height: calc(100dvh - 2 * var(--gutter) - 16px - 2 * var(--pad));
+    width: auto; height: auto;
+    pointer-events: none;
+    -webkit-user-drag: none;
+  }
+  .count {
+    position: fixed; left: 0; right: 0;
+    bottom: max(calc(var(--gutter) / 2 - 4px), env(safe-area-inset-bottom));
+    text-align: center; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<main class="stage" id="stage" aria-roledescription="carousel">
+  <div class="track" id="track"></div>
+</main>
+<div class="count" id="count" aria-live="polite"></div>
+
+<script>
+  // Placeholder photos from Unsplash (swap these IDs for your own images).
+  const photos = [
+    "1470071459604-3b5ec3a7fe05",
+    "1501785888041-af3ef285b470",
+    "1482192596544-9eb780fc7f66",
+    "1494500764479-0c8f2919a3d8",
+    "1500530855697-b586d89ba3ee",
+    "1441974231531-c6227db76b6e",
+    "1519681393784-d120267933ba",
+    "1505765050516-f72dcac9c60e",
+  ];
+  const src = id => `https://images.unsplash.com/photo-${id}?auto=format&fit=max&w=2000&q=80`;
+
+  const stage = document.getElementById('stage');
+  const track = document.getElementById('track');
+  const count = document.getElementById('count');
+  let index = 0;
+
+  photos.forEach((id, i) => {
+    const slide = document.createElement('div');
+    slide.className = 'slide';
+    const frame = document.createElement('figure');
+    frame.className = 'frame';
+    const img = new Image();
+    img.alt = '';
+    img.decoding = 'async';
+    if (i > 1) img.loading = 'lazy';
+    img.onload = () => frame.classList.add('ready');
+    img.onerror = () => { slide.remove(); clamp(); };   // drop broken placeholders
+    img.src = src(id);
+    frame.appendChild(img);
+    slide.appendChild(frame);
+    track.appendChild(slide);
+  });
+
+  const total = () => track.children.length;
+  const pad = n => String(n).padStart(2, '0');
+
+  function render(offset = 0, animate = true) {
+    track.classList.toggle('anim', animate);
+    track.style.transform = `translate3d(calc(${-index * 100}% + ${offset}px),0,0)`;
+    count.textContent = `${pad(index + 1)} / ${pad(total())}`;
+  }
+  function clamp() { index = Math.max(0, Math.min(index, total() - 1)); render(0, false); }
+  function go(i) { index = Math.max(0, Math.min(i, total() - 1)); render(); }
+
+  // Swipe / drag
+  let startX = 0, startY = 0, dx = 0, t0 = 0, dragging = false, locked = null;
+  stage.addEventListener('pointerdown', e => {
+    dragging = true; locked = null; dx = 0;
+    startX = e.clientX; startY = e.clientY; t0 = performance.now();
+    stage.setPointerCapture(e.pointerId);
+  });
+  stage.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const x = e.clientX - startX, y = e.clientY - startY;
+    if (locked === null && Math.hypot(x, y) > 6) locked = Math.abs(x) > Math.abs(y) ? 'x' : 'y';
+    if (locked !== 'x') return;
+    stage.classList.add('dragging');
+    const edge = (index === 0 && x > 0) || (index === total() - 1 && x < 0);
+    dx = edge ? x * 0.3 : x;          // rubber-band at the ends
+    render(dx, false);
+  });
+  const end = () => {
+    if (!dragging) return;
+    dragging = false; stage.classList.remove('dragging');
+    const v = Math.abs(dx) / (performance.now() - t0);
+    const threshold = stage.clientWidth * 0.18;
+    if (locked === 'x' && (Math.abs(dx) > threshold || v > 0.45)) go(index + (dx < 0 ? 1 : -1));
+    else render();
+  };
+  stage.addEventListener('pointerup', end);
+  stage.addEventListener('pointercancel', end);
+
+  // Keyboard & trackpad
+  addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') go(index + 1);
+    if (e.key === 'ArrowLeft') go(index - 1);
+  });
+  let wheelLock = false;
+  addEventListener('wheel', e => {
+    const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (wheelLock || Math.abs(d) < 20) return;
+    wheelLock = true; go(index + (d > 0 ? 1 : -1));
+    setTimeout(() => wheelLock = false, 700);
+  }, { passive: true });
+  addEventListener('resize', () => render(0, false));
+
+  render(0, false);
+</script>
+</body>
+</html>
