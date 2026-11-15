@@ -6,22 +6,25 @@
 <title>Kentaro Tsuji</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
-  /* Layout: a grey room with white fog drifting through it; one framed print waits in the haze, and a swipe parts it. */
+  /* Layout: wisps of fog float about the page and drift slowly; one framed print waits in the haze, and a swipe parts it. */
   :root {
-    --bg: #b3b2ae;
+    --bg: #e8e6e1;
     --frame: #ffffff;
-    --ink: #262624;
-    --muted: #4f4e4b;
-    --faint: #6c6b67;
-    --rule: #9f9e9a;
-    --shadow: 40, 38, 34;
+    --ink: #2c2b28;
+    --muted: #7a766f;
+    --faint: #aaa69f;
+    --rule: #cfccc5;
+    --shadow: 30, 26, 20;
     --mist: 255, 255, 255;
     --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
     --pad: clamp(12px, 2.4vmin, 28px);   /* white frame width */
     --gutter: clamp(28px, 8vmin, 88px);  /* space around the print */
     --head: 64px;
-    color-scheme: light;
   }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #1d1c1a; --ink: #e6e3dd; --muted: #8c8880; --faint: #66635d; --rule: #3a3834; --shadow: 0, 0, 0; --mist: 52, 50, 47; color-scheme: dark } }
+  :root[data-theme="dark"] {
+    --bg: #1d1c1a; --ink: #e6e3dd; --muted: #8c8880; --faint: #66635d; --rule: #3a3834; --shadow: 0, 0, 0; --mist: 52, 50, 47; color-scheme: dark }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
@@ -302,17 +305,30 @@
   stage.addEventListener('pointercancel', end);
 
   // ---- fog ---------------------------------------------------------------------
-  // Soft banks drift across the whole site. At rest a veil sits over the print;
+  // Wisps of fog float about the whole site. At rest a veil sits over the print;
   // a swipe parts it, and if nothing happens for a while it slowly closes again.
   const FOG_SCALE = 0.25;                        // drawn small and stretched: the softness is free
-  const FOG_DENSITY = 0.48;                        // how thick the drifting banks are
+  const FOG_DENSITY = 1;                        // how thick the wisps are
   let clear = 0, clearTo = 0, lastReveal = -1e9;
-  const banks = Array.from({ length: 16 }, () => ({
-    x: Math.random(), y: Math.random(),
-    r: 0.22 + Math.random() * 0.35,
-    vx: (0.4 + Math.random()) * 0.014 * (Math.random() < 0.8 ? 1 : -1), vy: (Math.random() - 0.5) * 0.006,
-    a: 0.22 + Math.random() * 0.26, ph: Math.random() * 6.28,
-  }));
+  // Wisps: loose clusters of soft puffs that appear somewhere, drift, change shape and fade.
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  function wisp(born) {
+    const n = 8 + Math.floor(Math.random() * 6);
+    const w = {
+      x: rnd(-0.1, 1.0), y: rnd(0.05, 0.95),
+      vx: rnd(0.006, 0.02) * (Math.random() < 0.85 ? 1 : -1), vy: rnd(-0.003, 0.003),
+      len: rnd(0.18, 0.42), tall: rnd(0.05, 0.12),          // long and low, like real fog
+      peak: rnd(0.45, 0.85),
+      age: born ? rnd(0, 20) : 0, life: rnd(16, 32),
+      puffs: [],
+    };
+    for (let i = 0; i < n; i++) w.puffs.push({
+      u: rnd(-0.5, 0.5), v: rnd(-0.5, 0.5), r: rnd(0.35, 0.8),
+      su: rnd(0.04, 0.12), sp: rnd(0, 6.28),                 // each puff slowly wanders inside the wisp
+    });
+    return w;
+  }
+  const wisps = Array.from({ length: 9 }, () => wisp(true));
   let mistRGB = '250, 249, 246';
   const readMist = () => { mistRGB = getComputedStyle(document.documentElement).getPropertyValue('--mist').trim() || mistRGB; };
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readMist);
@@ -338,18 +354,30 @@
     fctx.globalCompositeOperation = 'source-over';
     fctx.clearRect(0, 0, W, H);
     const t = now / 1000;
-    for (const b of banks) {
-      b.x += b.vx * dt; b.y += b.vy * dt;
-      if (b.x < -0.4) b.x += 1.8; if (b.x > 1.4) b.x -= 1.8;
-      if (b.y < -0.3) b.y += 1.6; if (b.y > 1.3) b.y -= 1.6;
-      const x = b.x * W, y = b.y * H, r = b.r * M;
-      const a = FOG_DENSITY * b.a * (0.75 + 0.25 * Math.sin(t * 0.13 + b.ph));
-      const g = fctx.createRadialGradient(x, y, 0, x, y, r);
-      g.addColorStop(0, `rgba(${mistRGB}, ${a})`);
-      g.addColorStop(0.55, `rgba(${mistRGB}, ${a * 0.45})`);
-      g.addColorStop(1, `rgba(${mistRGB}, 0)`);
-      fctx.fillStyle = g;
-      fctx.fillRect(x - r, y - r, r * 2, r * 2);
+    for (let k = 0; k < wisps.length; k++) {
+      const w = wisps[k];
+      w.age += dt;
+      w.x += w.vx * dt; w.y += w.vy * dt + Math.sin(t * 0.07 + k) * 0.0004;
+      if (w.age > w.life || w.x > 1.4 || w.x < -0.5) { wisps[k] = wisp(false); continue; }
+      const fade = Math.min(1, w.age / 5) * Math.min(1, (w.life - w.age) / 6);   // fade in, linger, fade out
+      const A = w.peak * fade * fade * (3 - 2 * fade) * FOG_DENSITY;
+      if (A < 0.005) continue;
+      for (const p of w.puffs) {
+        const px = (w.x + (p.u + Math.sin(t * p.su + p.sp) * 0.18) * w.len) * W;
+        const py = (w.y + (p.v + Math.cos(t * p.su * 0.8 + p.sp) * 0.25) * w.tall) * H;
+        const r = p.r * w.tall * 1.3 * Math.min(W, H) * 1.6;
+        const stretch = 2.6;                                   // puffs are wide and low, so they read as banks, not bubbles
+        fctx.save();
+        fctx.translate(px, py); fctx.scale(stretch, 1);
+        const g = fctx.createRadialGradient(0, 0, 0, 0, 0, r);
+        g.addColorStop(0, `rgba(${mistRGB}, ${A * 0.55})`);
+        g.addColorStop(0.35, `rgba(${mistRGB}, ${A * 0.38})`);
+        g.addColorStop(0.7, `rgba(${mistRGB}, ${A * 0.12})`);
+        g.addColorStop(1, `rgba(${mistRGB}, 0)`);
+        fctx.fillStyle = g;
+        fctx.fillRect(-r, -r, r * 2, r * 2);
+        fctx.restore();
+      }
     }
     // where the print hangs
     const cur = prints[index];
@@ -378,8 +406,8 @@
       fctx.save();
       fctx.translate(cx, cy); fctx.scale(1, ry / rx);
       const h = fctx.createRadialGradient(0, 0, 0, 0, 0, rx * 1.5);
-      h.addColorStop(0, `rgba(0,0,0,${0.95 * c})`);
-      h.addColorStop(0.62, `rgba(0,0,0,${0.85 * c})`);
+      h.addColorStop(0, `rgba(0,0,0,${0.6 * c})`);             // thinned, not emptied: wisps still cross the print
+      h.addColorStop(0.62, `rgba(0,0,0,${0.5 * c})`);
       h.addColorStop(1, 'rgba(0,0,0,0)');
       fctx.fillStyle = h;
       fctx.fillRect(-rx * 1.6, -rx * 1.6, rx * 3.2, rx * 3.2);
