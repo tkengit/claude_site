@@ -5,15 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>One Print</title>
 <style>
+  /* Layout: prints stacked on a wall; peel the top one off and toss it aside. */
   :root {
     --bg: #e8e6e1;
     --frame: #ffffff;
     --ink: #6b6862;
+    --shadow: 30, 26, 20;
     --pad: clamp(12px, 2.4vmin, 28px);   /* white frame width */
-    --gutter: clamp(24px, 7vmin, 80px);  /* space around the print */
+    --gutter: clamp(28px, 8vmin, 88px);  /* space around the print */
   }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #1d1c1a; --ink: #8c8880; color-scheme: dark } }
-  :root[data-theme="dark"] { --bg: #1d1c1a; --ink: #8c8880; color-scheme: dark }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #1d1c1a; --ink: #8c8880; --shadow: 0, 0, 0; color-scheme: dark } }
+  :root[data-theme="dark"] { --bg: #1d1c1a; --ink: #8c8880; --shadow: 0, 0, 0; color-scheme: dark }
+
   * { box-sizing: border-box; margin: 0; }
   html, body { height: 100%; }
   body {
@@ -25,24 +28,33 @@
     -webkit-user-select: none; user-select: none;
     -webkit-tap-highlight-color: transparent;
   }
-  .stage { position: fixed; inset: 0; overflow: hidden; touch-action: pan-y; cursor: grab; }
-  .stage.dragging { cursor: grabbing; }
-  .track { display: flex; height: 100%; will-change: transform; }
-  .track.anim { transition: transform .55s cubic-bezier(.22, .8, .24, 1); }
-  .slide {
-    flex: 0 0 100%;
+  .stage {
+    position: fixed; inset: 0;
     display: grid; place-items: center;
     padding: var(--gutter) var(--gutter) calc(var(--gutter) + 16px);
+    overflow: hidden;
+    touch-action: pan-y;
+    cursor: grab;
   }
-  .frame {
+  .stage.dragging { cursor: grabbing; }
+  .card {
+    grid-area: 1 / 1;
     background: var(--frame);
     padding: var(--pad);
-    box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 12px 40px -12px rgba(0,0,0,.22);
     line-height: 0;
-    opacity: 0; transition: opacity .6s ease;
+    will-change: transform;
+    opacity: 0;
+    transition: opacity .4s ease, box-shadow .35s ease;
+    box-shadow:
+      0 1px 2px rgba(var(--shadow), .08),
+      0 10px 30px -14px rgba(var(--shadow), .28);
   }
-  .frame.ready { opacity: 1; }
-  .frame img {
+  .card.lifted {
+    box-shadow:
+      0 2px 4px rgba(var(--shadow), .06),
+      0 34px 60px -18px rgba(var(--shadow), .42);
+  }
+  .card img {
     display: block;
     max-width: calc(100vw - 2 * var(--gutter) - 2 * var(--pad));
     max-height: calc(100dvh - 2 * var(--gutter) - 16px - 2 * var(--pad));
@@ -54,17 +66,16 @@
     position: fixed; left: 0; right: 0;
     bottom: max(calc(var(--gutter) / 2 - 4px), env(safe-area-inset-bottom));
     text-align: center; pointer-events: none;
+    font-variant-numeric: tabular-nums;
   }
 </style>
 </head>
 <body>
-<main class="stage" id="stage" aria-roledescription="carousel">
-  <div class="track" id="track"></div>
-</main>
+<main class="stage" id="stage" aria-roledescription="carousel"></main>
 <div class="count" id="count" aria-live="polite"></div>
 
 <script>
-  // Placeholder photos from Unsplash (swap these IDs for your own images).
+  // Placeholder photos from Unsplash (swap these for your own images).
   const photos = [
     "1505765050516-f72dcac9c60e",
     "1494500764479-0c8f2919a3d8",
@@ -78,69 +89,214 @@
   const src = id => `https://images.unsplash.com/photo-${id}?auto=format&fit=max&w=2000&q=80`;
 
   const stage = document.getElementById('stage');
-  const track = document.getElementById('track');
   const count = document.getElementById('count');
-  let index = 0;
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const K = reduced ? 2400 : 230;   // spring stiffness
+  const D = reduced ? 98 : 25;      // spring damping (slightly under-damped: a soft settle)
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
 
-  photos.forEach((id, i) => {
-    const slide = document.createElement('div');
-    slide.className = 'slide';
-    const frame = document.createElement('figure');
-    frame.className = 'frame';
+  // ---- cards -------------------------------------------------------------
+  let index = 0;
+  const cards = photos.map((id, i) => {
+    const el = document.createElement('figure');
+    el.className = 'card';
     const img = new Image();
     img.alt = '';
     img.decoding = 'async';
-    if (i > 1) img.loading = 'lazy';
-    img.onload = () => frame.classList.add('ready');
-    img.onerror = () => { slide.remove(); clamp(); };   // drop broken placeholders
+    el.appendChild(img);
+    stage.appendChild(el);
+    const c = {
+      el, i, held: false, dealt: false, loaded: false,
+      x: 0, y: 34, r: restRot(i) * 2, s: 1.05,     // start slightly "above" the wall
+      vx: 0, vy: 0, vr: 0, vs: 0,
+      tx: 0, ty: 34, tr: restRot(i) * 2, ts: 1.05,
+      throwY: -40, throwR: -14, op: 0, ready: false,
+    };
+    img.onload = () => { c.loaded = true; reveal(c); };
+    img.onerror = () => { el.remove(); cards.splice(cards.indexOf(c), 1); cards.forEach((k, j) => k.i = j);
+                          index = clamp(index, 0, cards.length - 1); retarget(); };
     img.src = src(id);
-    frame.appendChild(img);
-    slide.appendChild(frame);
-    track.appendChild(slide);
+    return c;
   });
 
-  const total = () => track.children.length;
-  const pad = n => String(n).padStart(2, '0');
+  // Each print in the stack hangs a little crooked, like real paper.
+  function restRot(i) { return [-1.6, 1.1, -0.6, 1.8, -1.2, 0.5, -1.9, 1.4][i % 8]; }
+  function offLeft(c) { return -(stage.clientWidth / 2 + c.el.offsetWidth * 0.8 + 60); }
+  function reveal(c) { c.ready = c.loaded && c.dealt; draw(c); }
 
-  function render(offset = 0, animate = true) {
-    track.classList.toggle('anim', animate);
-    track.style.transform = `translate3d(calc(${-index * 100}% + ${offset}px),0,0)`;
-    count.textContent = `${pad(index + 1)} / ${pad(total())}`;
+  function rest(c) {
+    const d = c.i - index;
+    if (d < 0) return { x: offLeft(c), y: c.throwY, r: c.throwR, s: 1, o: 1 };
+    if (d === 0) return { x: 0, y: 0, r: 0, s: 1, o: 1 };
+    // prints underneath stay hidden until the one above is peeled away
+    return { x: 0, y: 0, r: restRot(c.i), s: 1 - 0.035 * Math.min(d, 3), o: 0 };
   }
-  function clamp() { index = Math.max(0, Math.min(index, total() - 1)); render(0, false); }
-  function go(i) { index = Math.max(0, Math.min(i, total() - 1)); render(); }
+  function retarget() {
+    for (const c of cards) {
+      if (c.held || !c.dealt) continue;
+      const p = rest(c);
+      c.tx = p.x; c.ty = p.y; c.tr = p.r; c.ts = p.s; c.op = p.o;
+    }
+    cards.forEach(draw);
+    count.textContent = `${String(index + 1).padStart(2, '0')} / ${String(cards.length).padStart(2, '0')}`;
+    wake();
+  }
 
-  // Swipe / drag
-  let startX = 0, startY = 0, dx = 0, t0 = 0, dragging = false, locked = null;
+  // ---- physics loop ------------------------------------------------------
+  let raf = 0, last = 0;
+  function wake() { if (!raf) { last = performance.now(); raf = requestAnimationFrame(tick); } }
+  function step(c, k, dt) {
+    const v = 'v' + k, t = 't' + k;
+    c[v] += (-K * (c[k] - c[t]) - D * c[v]) * dt;
+    c[k] += c[v] * dt;
+  }
+  function tick(now) {
+    const dt = Math.min(1 / 30, (now - last) / 1000); last = now;
+    let moving = false;
+    for (const c of cards) {
+      if (!c.held) {
+        for (const k of ['x', 'y', 'r', 's']) step(c, k, dt);
+        moving ||= Math.abs(c.x - c.tx) + Math.abs(c.y - c.ty) > 0.3 || Math.abs(c.r - c.tr) > 0.02
+                || Math.abs(c.s - c.ts) > 0.0005 || Math.abs(c.vx) + Math.abs(c.vy) > 2;
+      } else moving = true;
+      draw(c);
+    }
+    raf = moving ? requestAnimationFrame(tick) : 0;
+  }
+  function draw(c) {
+    const d = c.i - index;
+    c.el.style.zIndex = 1000 - c.i;
+    c.el.style.visibility = d > 2 ? 'hidden' : 'visible';
+    c.el.style.opacity = c.ready ? c.op : 0;
+    c.el.style.transform = `translate3d(${c.x}px,${c.y}px,0) rotate(${c.r}deg) scale(${c.s})`;
+  }
+
+  // ---- on load, the first print settles onto the wall --------------------
+  cards.forEach(draw);
+  setTimeout(() => { cards.forEach(c => { c.dealt = true; reveal(c); }); retarget(); }, reduced ? 0 : 150);
+
+  // ---- drag: peel the top print off, or pull the last one back -----------
+  let drag = null;
   stage.addEventListener('pointerdown', e => {
-    dragging = true; locked = null; dx = 0;
-    startX = e.clientX; startY = e.clientY; t0 = performance.now();
+    if (e.button !== 0 || !cards.length) return;
+    const top = cards[index].el.getBoundingClientRect();
+    drag = {
+      x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, axis: null, mode: null,
+      grab: e.clientY < top.top + top.height / 2 ? 1 : -1,   // grabbed above or below center
+      hist: [{ x: e.clientX, y: e.clientY, t: performance.now() }],
+    };
     stage.setPointerCapture(e.pointerId);
   });
+
   stage.addEventListener('pointermove', e => {
-    if (!dragging) return;
-    const x = e.clientX - startX, y = e.clientY - startY;
-    if (locked === null && Math.hypot(x, y) > 6) locked = Math.abs(x) > Math.abs(y) ? 'x' : 'y';
-    if (locked !== 'x') return;
+    if (!drag) return;
+    const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
+    if (!drag.axis && Math.hypot(dx, dy) > 6) drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    if (drag.axis !== 'x') return;
+    drag.dx = dx; drag.dy = dy;
+    drag.hist.push({ x: e.clientX, y: e.clientY, t: performance.now() });
+    if (drag.hist.length > 6) drag.hist.shift();
     stage.classList.add('dragging');
-    const edge = (index === 0 && x > 0) || (index === total() - 1 && x < 0);
-    dx = edge ? x * 0.3 : x;          // rubber-band at the ends
-    render(dx, false);
+    hold(dx > 0 && index > 0 ? 'prev' : 'next');
   });
-  const end = () => {
-    if (!dragging) return;
-    dragging = false; stage.classList.remove('dragging');
-    const v = Math.abs(dx) / (performance.now() - t0);
-    const threshold = stage.clientWidth * 0.18;
-    if (locked === 'x' && (Math.abs(dx) > threshold || v > 0.45)) go(index + (dx < 0 ? 1 : -1));
-    else render();
-  };
+
+  function hold(mode) {
+    const W = stage.clientWidth;
+    if (drag.mode !== mode) { release(false); drag.mode = mode; }
+    const { dx, dy, grab } = drag;
+    retarget();
+    if (mode === 'next') {
+      const c = cards[index];
+      const atEnd = index === cards.length - 1;
+      const x = atEnd ? (dx < 0 ? -Math.pow(-dx, 0.72) : Math.pow(dx, 0.72)) : dx;  // rubber band
+      lift(c, x, dy * 0.35, clamp(x * 0.05 * grab, -22, 22), 1.025);
+      const under = cards[index + 1];
+      if (under) {
+        const p = clamp(-dx / (W * 0.55), 0, 1);
+        under.tr = restRot(under.i) * (1 - p);
+        under.ts = lerp(0.965, 1, p);
+        under.op = clamp(p * 2.5, 0, 1);
+      }
+    } else {
+      const c = cards[index - 1];
+      const p = clamp(dx / (W * 0.6), 0, 1.15);
+      lift(c, lerp(offLeft(c), 0, p), lerp(c.throwY, dy * 0.25, Math.min(p, 1)),
+           lerp(c.throwR, 0, Math.min(p, 1)), 1.025);
+      const top = cards[index];
+      top.ts = 1 - 0.035 * Math.min(p, 1);
+      top.tr = restRot(top.i) * Math.min(p, 1);
+    }
+    wake();
+  }
+
+  function lift(c, x, y, r, s) {
+    c.held = true; c.el.classList.add('lifted');
+    c.x = x; c.y = y; c.r = r; c.s = s;
+  }
+
+  function release(commit) {
+    const held = cards.filter(c => c.held);
+    if (!held.length) return;
+    let vx = 0, vy = 0;
+    if (drag && drag.hist.length > 1) {
+      const a = drag.hist[0], b = drag.hist[drag.hist.length - 1];
+      const t = Math.max(16, b.t - a.t);
+      vx = (b.x - a.x) / t; vy = (b.y - a.y) / t;      // px per ms
+    }
+    if (commit) {
+      const W = stage.clientWidth;
+      const { dx, mode } = drag;
+      if (mode === 'next' && index < cards.length - 1 && (dx < -W * 0.22 || vx < -0.45)) {
+        const c = cards[index];
+        c.throwY = clamp(c.y + vy * 260, -stage.clientHeight * 0.4, stage.clientHeight * 0.4);
+        c.throwR = clamp(c.r * 1.8 - 6, -34, 20);
+        index++;
+      } else if (mode === 'prev' && (dx > W * 0.18 || vx > 0.45)) {
+        index--;
+      }
+    }
+    for (const c of held) {
+      c.held = false;
+      c.vx = vx * 1000; c.vy = vy * 1000; c.vr = vx * 40; c.vs = 0;
+      if (c.i >= index) setTimeout(() => c.el.classList.remove('lifted'), 60);
+      else setTimeout(() => c.el.classList.remove('lifted'), 500);
+    }
+    retarget();
+  }
+
+  function end(e) {
+    if (!drag) return;
+    stage.classList.remove('dragging');
+    if (drag.axis === 'x') release(true);
+    else if (!drag.axis && e.type === 'pointerup') {               // a tap: right side = next, left = previous
+      e.clientX > innerWidth / 3 ? go(index + 1) : go(index - 1);
+    }
+    drag = null;
+  }
   stage.addEventListener('pointerup', end);
   stage.addEventListener('pointercancel', end);
 
-  // Keyboard & trackpad
+  // ---- keyboard, wheel, tap ---------------------------------------------
+  function go(i) {
+    if (i < 0 || i >= cards.length || i === index) {               // nudge at the ends
+      const c = cards[index]; if (c) { c.vx += (i < index ? 1 : -1) * 420; wake(); }
+      return;
+    }
+    if (i > index) {
+      const c = cards[index];
+      c.throwY = -30 - Math.random() * 50; c.throwR = -10 - Math.random() * 10;
+      c.vx = -1600; c.vy = -200; c.vr = -60;
+      c.el.classList.add('lifted'); setTimeout(() => c.el.classList.remove('lifted'), 500);
+    } else {
+      const c = cards[i];
+      c.vx = 900; c.el.classList.add('lifted'); setTimeout(() => c.el.classList.remove('lifted'), 380);
+    }
+    index = i;
+    retarget();
+  }
   addEventListener('keydown', e => {
-    if (e.key === 'ArrowRight' || e.key === ' ') go(index + 1);
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(index + 1); }
     if (e.key === 'ArrowLeft') go(index - 1);
   });
   let wheelLock = false;
@@ -148,11 +304,11 @@
     const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     if (wheelLock || Math.abs(d) < 20) return;
     wheelLock = true; go(index + (d > 0 ? 1 : -1));
-    setTimeout(() => wheelLock = false, 700);
+    setTimeout(() => wheelLock = false, 650);
   }, { passive: true });
-  addEventListener('resize', () => render(0, false));
+  addEventListener('resize', retarget);
 
-  render(0, false);
+  retarget();
 </script>
 </body>
 </html>
