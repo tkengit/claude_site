@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kentaro Tsuji Black</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Layout: a black room with fog drifting through it; one framed print waits in the haze, and a swipe parts it. */
+  :root {
+    --bg: #050505;
+    --frame: #f4f2ee;
+    --ink: #e8e6e1;
+    --muted: #8d8a84;
+    --faint: #5c5a56;
+    --rule: #232221;
+    --shadow: 0, 0, 0;
+    --mist: 128, 129, 132;
+    --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --pad: clamp(12px, 2.4vmin, 28px);   /* white frame width */
+    --gutter: clamp(28px, 8vmin, 88px);  /* space around the print */
+    --head: 64px;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 400 12px/1.5 var(--sans);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+  a { color: inherit; text-decoration: none; }
+  a:focus-visible { outline: 1px solid var(--ink); outline-offset: 4px; }
+
+  /* ---- header ---- */
+  .head {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    display: flex; justify-content: space-between; align-items: center;
+    height: calc(var(--head) + env(safe-area-inset-top, 0px));
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-left: max(20px, env(safe-area-inset-left, 0px));
+    padding-right: max(20px, env(safe-area-inset-right, 0px));
+    font-size: 11px; font-weight: 500; letter-spacing: .2em;
+    color: var(--faint);
+  }
+  .head a { padding: 8px 0; transition: color .2s; }
+  .head a:hover { color: var(--muted); }
+
+  /* ---- photo rail ---- */
+  .stage {
+    position: fixed; inset: 0;
+    display: grid; place-items: center;
+    padding: max(var(--gutter), calc(var(--head) + env(safe-area-inset-top, 0px))) var(--gutter) calc(var(--gutter) + 16px);
+    overflow: hidden;
+    touch-action: pan-y;
+    cursor: grab;
+    -webkit-user-select: none; user-select: none;
+    transition: opacity .5s ease;
+  }
+  .stage.dragging { cursor: grabbing; }
+  .print {
+    grid-area: 1 / 1;
+    background: var(--frame);
+    padding: var(--pad);
+    line-height: 0;
+    box-shadow: 0 1px 2px rgba(var(--shadow), .08), 0 12px 34px -14px rgba(var(--shadow), .3);
+    opacity: 0;
+  }
+  .print.ready { animation: surface 1.2s ease backwards; }
+  @keyframes surface { from { opacity: 0; filter: blur(12px) brightness(1.2); } }
+  .print img {
+    display: block;
+    max-width: calc(100vw - 2 * var(--gutter) - 2 * var(--pad));
+    max-height: calc(100dvh - max(var(--gutter), calc(var(--head) + env(safe-area-inset-top, 0px))) - var(--gutter) - 16px - 2 * var(--pad));
+    width: auto; height: auto;
+    pointer-events: none; -webkit-user-drag: none;
+  }
+  .print { will-change: transform, opacity, filter; }
+  .fog { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
+  .count {
+    position: fixed; left: 0; right: 0; z-index: 4;
+    bottom: max(calc(var(--gutter) / 2 - 4px), env(safe-area-inset-bottom, 0px));
+    text-align: center; pointer-events: none;
+    font-size: 11px; letter-spacing: .14em; color: var(--faint);
+    font-variant-numeric: tabular-nums;
+    transition: opacity .5s ease;
+  }
+
+  /* ---- CV ---- */
+  .cv {
+    position: fixed; inset: 0; z-index: 5;
+    overflow-y: auto;
+    padding-top: calc(var(--head) + env(safe-area-inset-top, 0px) + clamp(48px, 14vh, 140px));
+    padding-bottom: 80px;
+    padding-left: max(20px, env(safe-area-inset-left, 0px));
+    padding-right: max(20px, env(safe-area-inset-right, 0px));
+    background: transparent;                     /* the fog keeps drifting behind the text */
+    opacity: 0; visibility: hidden;
+    transition: opacity .5s ease, visibility 0s linear .5s;
+  }
+  .cv-inner { max-width: 620px; margin: 0 auto; }
+  .cv h1 { font-size: 13px; font-weight: 500; letter-spacing: .2em; }
+  .cv .role { margin-top: 10px; color: var(--muted); font-size: 13px; letter-spacing: .02em; }
+  .cv ol { list-style: none; margin-top: 56px; border-top: 1px solid var(--rule); }
+  .cv li {
+    display: grid; grid-template-columns: 4.5em 1fr; gap: 16px;
+    padding: 16px 0; border-bottom: 1px solid var(--rule);
+    font-size: 13px; line-height: 1.6;
+  }
+  .cv li > * { min-width: 0; }
+  .cv .yr { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .cv li, .cv h1, .cv .role { opacity: 0; transform: translateY(6px); transition: opacity .6s ease, transform .6s ease; }
+
+  body.on-cv .cv { opacity: 1; visibility: visible; transition: opacity .5s ease; }
+  body.on-cv .cv li, body.on-cv .cv h1, body.on-cv .cv .role { opacity: 1; transform: none; }
+  body.on-cv .cv h1 { transition-delay: .1s; }
+  body.on-cv .cv .role { transition-delay: .18s; }
+  body.on-cv .cv li:nth-child(1) { transition-delay: .26s; }
+  body.on-cv .cv li:nth-child(2) { transition-delay: .32s; }
+  body.on-cv .cv li:nth-child(3) { transition-delay: .38s; }
+  body.on-cv .stage, body.on-cv .count { opacity: 0 !important; pointer-events: none; }
+</style>
+</head>
+<body>
+<header class="head">
+  <a href="#" class="name">KENTARO TSUJI</a>
+  <a href="#cv" class="nav" id="nav">CV</a>
+</header>
+
+<main class="stage" id="stage" aria-roledescription="carousel" aria-label="Photographs"></main>
+<canvas class="fog" id="fog"></canvas>
+<div class="count" id="count" aria-live="polite"></div>
+
+<section class="cv" id="cv" aria-label="CV">
+  <div class="cv-inner">
+    <h1>KENTARO TSUJI</h1>
+    <p class="role">iPhone 1 Photographer</p>
+    <ol>
+      <li><span class="yr">1996</span><span>Born in Saga, Japan</span></li>
+      <li><span class="yr">2021</span><span>M.Eng. in Systems and Control Engineering, Tokyo Institute of Technology</span></li>
+      <li><span class="yr">2021</span><span>Joined Dentsu</span></li>
+    </ol>
+  </div>
+</section>
+
+<script>
+  // Placeholder photos from Unsplash (swap these for your own images).
+  const photos = [
+    "1505765050516-f72dcac9c60e",
+    "1494500764479-0c8f2919a3d8",
+    "1482192596544-9eb780fc7f66",
+    "1500530855697-b586d89ba3ee",
+    "1470071459604-3b5ec3a7fe05",
+    "1441974231531-c6227db76b6e",
+    "1501785888041-af3ef285b470",
+    "1519681393784-d120267933ba",
+  ];
+  const src = id => `https://images.unsplash.com/photo-${id}?auto=format&fit=max&w=2000&q=80`;
+
+  const stage = document.getElementById('stage');
+  const count = document.getElementById('count');
+  const fogEl = document.getElementById('fog');
+  const fctx = fogEl.getContext('2d');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const onCV = () => document.body.classList.contains('on-cv');
+
+  // ---- prints ----------------------------------------------------------------
+  let prints = photos.map(id => {
+    const el = document.createElement('figure');
+    el.className = 'print';
+    const img = new Image();
+    img.alt = '';
+    img.decoding = 'async';
+    el.appendChild(img);
+    stage.appendChild(el);
+    const p = { el, img, w: 0, loaded: false };
+    img.onload = () => { p.loaded = true; el.classList.add('ready'); measure(); };
+    img.onerror = () => {
+      el.remove(); prints = prints.filter(q => q !== p); index = clamp(index, 0, prints.length - 1); pos = target = index; measure(); };
+    img.src = src(id);
+    return p;
+  });
+
+  // ---- rail state: pos is a continuous "which photo" (1.5 = halfway from 2nd to 3rd)
+  let index = 0, pos = 0, vel = 0, target = 0;
+  let from = 0;                                  // the print shown when this change began
+  let S = 400;                                   // px of drag for one change
+  function measure() {
+    let maxW = 0;
+    for (const p of prints) { p.w = p.el.offsetWidth; maxW = Math.max(maxW, p.w); }
+    S = Math.min(stage.clientWidth, 760) * 0.8;  // drag distance for one full change
+    setCount();
+    render();
+  }
+  function setCount() {
+    count.textContent = `${String(index + 1).padStart(2, '0')} / ${String(prints.length).padStart(2, '0')}`;
+  }
+
+  // ---- fog -------------------------------------------------------------------
+  // a = how far a print is from being the one shown (0 here .. 1 gone).
+  // The leaving print and the arriving one meet halfway inside a soft haze.
+  const smooth = (e0, e1, v) => { const t = clamp((v - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+  function render() {
+    prints.forEach((p, i) => {
+      const d = i - pos, a = Math.abs(d);
+      if (a >= 1 || !p.loaded) { p.el.style.visibility = 'hidden'; p.el.style.opacity = 0; return; }
+      p.el.style.visibility = '';
+      p.el.style.opacity = (1 - smooth(0.04, 0.9, a)).toFixed(3);
+      if (a < 0.002) { p.el.style.filter = ''; p.el.style.transform = ''; return; }
+      const f = Math.pow(a, 1.15);
+      p.el.style.filter = `blur(${(16 * f).toFixed(2)}px) brightness(${(1 + 0.22 * f).toFixed(3)}) contrast(${(1 - 0.3 * f).toFixed(3)}) saturate(${(1 - 0.65 * f).toFixed(3)})`;
+      // the one leaving drifts a breath closer as it goes; the one arriving settles back into place
+      const leaving = i === from;
+      p.el.style.transform = `scale(${(leaving ? 1 + 0.03 * a : 1 - 0.035 * a).toFixed(4)})`;
+    });
+  }
+
+  // ---- spring ------------------------------------------------------------------
+  const K = reduced ? 900 : 180, D = reduced ? 60 : 25;   // just under critical: settles with no bounce you can see
+  let raf = 0, last = 0, holding = false;
+  function wake() { if (!raf) { last = performance.now(); raf = requestAnimationFrame(tick); } }
+  function tick(now) {
+    const dt = Math.min(1 / 30, (now - last) / 1000); last = now;
+    if (!holding) {
+      vel += (-K * (pos - target) - D * vel) * dt;
+      pos += vel * dt;
+      if (Math.abs(pos - target) < 0.0004 && Math.abs(vel) < 0.002) {
+        pos = target; vel = 0; render();
+        raf = 0; return;
+      }
+    }
+    render();
+    raf = requestAnimationFrame(tick);
+  }
+  function go(i, kick = 0) {
+    if (i < 0 || i >= prints.length) kick += (i < 0 ? -1 : 1) * 0.9;   // the end of the rail: a soft bump
+    from = Math.round(pos);
+    index = clamp(i, 0, prints.length - 1);
+    target = index;
+    vel += kick;
+    setCount();
+    if (index !== from) reveal();
+    wake();
+  }
+
+  // ---- drag: 1:1 with the finger, then the flick carries on into the spring --------
+  let drag = null;
+  stage.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || onCV()) return;
+    drag = { x0: e.clientX, y0: e.clientY, axis: null, p0: pos, hist: [{ x: e.clientX, t: performance.now() }] };
+    stage.setPointerCapture(e.pointerId);
+  });
+  stage.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
+    if (!drag.axis && Math.hypot(dx, dy) > 5) {
+      drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+      if (drag.axis === 'x') { drag.x0 = e.clientX; drag.p0 = pos; from = Math.round(pos); }
+    }
+    if (drag.axis !== 'x') return;
+    holding = true; vel = 0;
+    stage.classList.add('dragging');
+    drag.hist.push({ x: e.clientX, t: performance.now() });
+    if (drag.hist.length > 5) drag.hist.shift();
+    let p = drag.p0 - (e.clientX - drag.x0) / S;
+    const hi = prints.length - 1;                // past either end the rail goes stiff
+    if (p < 0) p = -rubber(-p);
+    if (p > hi) p = hi + rubber(p - hi);
+    pos = p;
+    wake();
+  });
+  const rubber = o => 0.18 * (1 - Math.exp(-o / 0.18 * 0.55));
+
+  function end(e) {
+    if (!drag) return;
+    stage.classList.remove('dragging');
+    const { axis, hist, p0 } = drag;
+    drag = null;
+    if (axis === 'x') {
+      holding = false;
+      const a = hist[0], b = hist[hist.length - 1];
+      const v = (b.x - a.x) / Math.max(12, b.t - a.t);        // px per ms, + = finger moving right
+      vel = -v * 1000 / S;                                   // hand the finger's speed to the spring
+      const from = Math.round(p0);
+      const projected = pos + vel * 0.16;                    // where the flick would carry it
+      const i = clamp(Math.round(projected), from - 1, from + 1);   // one photo per flick
+      index = clamp(i, 0, prints.length - 1);
+      target = index;
+      setCount();
+      if (index !== from) reveal();
+      wake();
+    } else if (!axis && e.type === 'pointerup') {
+      go(index + (e.clientX > innerWidth / 3 ? 1 : -1));
+    }
+  }
+  stage.addEventListener('pointerup', end);
+  stage.addEventListener('pointercancel', end);
+
+  // ---- fog ---------------------------------------------------------------------
+  // Soft banks drift across the whole site. At rest a veil sits over the print;
+  // a swipe parts it, and if nothing happens for a while it slowly closes again.
+  const FOG_SCALE = 0.25;                        // drawn small and stretched: the softness is free
+  const FOG_DENSITY = 0.32;                     // on black, a thin haze reads as fog
+  let clear = 0, clearTo = 0, lastReveal = -1e9;
+  const banks = Array.from({ length: 16 }, () => ({
+    x: Math.random(), y: Math.random(),
+    r: 0.22 + Math.random() * 0.35,
+    vx: (0.4 + Math.random()) * 0.014 * (Math.random() < 0.8 ? 1 : -1), vy: (Math.random() - 0.5) * 0.006,
+    a: 0.22 + Math.random() * 0.26, ph: Math.random() * 6.28,
+  }));
+  let mistRGB = '250, 249, 246';
+  const readMist = () => { mistRGB = getComputedStyle(document.documentElement).getPropertyValue('--mist').trim() || mistRGB; };
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readMist);
+  readMist();
+
+  function sizeFog() {
+    fogEl.width = Math.max(2, Math.round(innerWidth * FOG_SCALE));
+    fogEl.height = Math.max(2, Math.round(innerHeight * FOG_SCALE));
+  }
+  function reveal() { clearTo = 1; lastReveal = performance.now(); }
+
+  let fogLast = performance.now();
+  function fogFrame(now) {
+    const dt = Math.min(0.05, (now - fogLast) / 1000); fogLast = now;
+    const W = fogEl.width, H = fogEl.height, M = Math.max(W, H);
+    if (now - lastReveal > 6000) clearTo = 0;
+    // parting is quick, closing is slow
+    clear += (clearTo - clear) * (1 - Math.exp(-dt * (clearTo > clear ? 2.4 : 0.22)));
+    // while a swipe is under way, the fog thins with it
+    const moving = Math.abs(pos - Math.round(pos)) * 2;
+    const c = reduced ? 1 : clamp(Math.max(clear, moving * 0.9), 0, 1);
+
+    fctx.globalCompositeOperation = 'source-over';
+    fctx.clearRect(0, 0, W, H);
+    const t = now / 1000;
+    for (const b of banks) {
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      if (b.x < -0.4) b.x += 1.8; if (b.x > 1.4) b.x -= 1.8;
+      if (b.y < -0.3) b.y += 1.6; if (b.y > 1.3) b.y -= 1.6;
+      const x = b.x * W, y = b.y * H, r = b.r * M;
+      const a = FOG_DENSITY * b.a * (0.75 + 0.25 * Math.sin(t * 0.13 + b.ph));
+      const g = fctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(${mistRGB}, ${a})`);
+      g.addColorStop(0.55, `rgba(${mistRGB}, ${a * 0.45})`);
+      g.addColorStop(1, `rgba(${mistRGB}, 0)`);
+      fctx.fillStyle = g;
+      fctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    // where the print hangs
+    const cur = prints[index];
+    let cx = W / 2, cy = H / 2, rx = W * 0.35, ry = H * 0.25;
+    if (cur && cur.loaded) {
+      const r = cur.el.getBoundingClientRect();
+      cx = (r.left + r.width / 2) * FOG_SCALE; cy = (r.top + r.height / 2) * FOG_SCALE;
+      rx = r.width * FOG_SCALE * 0.62; ry = r.height * FOG_SCALE * 0.62;
+    }
+    // the veil over the print, breathing a little
+    const veil = onCV() ? 0 : (1 - c) * (0.66 + 0.06 * Math.sin(t * 0.4));   // no veil behind the CV text
+    if (veil > 0.01) {
+      fctx.save();
+      fctx.translate(cx, cy); fctx.scale(1, ry / rx);
+      const v = fctx.createRadialGradient(0, 0, 0, 0, 0, rx * 1.35);
+      v.addColorStop(0, `rgba(${mistRGB}, ${veil})`);
+      v.addColorStop(0.6, `rgba(${mistRGB}, ${veil * 0.85})`);
+      v.addColorStop(1, `rgba(${mistRGB}, 0)`);
+      fctx.fillStyle = v;
+      fctx.fillRect(-rx * 1.4, -rx * 1.4, rx * 2.8, rx * 2.8);
+      fctx.restore();
+    }
+    // the clearing: drifting banks are pushed back from the print
+    if (c > 0.01 && !onCV()) {
+      fctx.globalCompositeOperation = 'destination-out';
+      fctx.save();
+      fctx.translate(cx, cy); fctx.scale(1, ry / rx);
+      const h = fctx.createRadialGradient(0, 0, 0, 0, 0, rx * 1.5);
+      h.addColorStop(0, `rgba(0,0,0,${0.95 * c})`);
+      h.addColorStop(0.62, `rgba(0,0,0,${0.85 * c})`);
+      h.addColorStop(1, 'rgba(0,0,0,0)');
+      fctx.fillStyle = h;
+      fctx.fillRect(-rx * 1.6, -rx * 1.6, rx * 3.2, rx * 3.2);
+      fctx.restore();
+      fctx.globalCompositeOperation = 'source-over';
+    }
+    requestAnimationFrame(fogFrame);
+  }
+  sizeFog();
+  requestAnimationFrame(fogFrame);
+
+  // ---- keyboard, wheel -------------------------------------------------------
+  addEventListener('keydown', e => {
+    if (onCV()) { if (e.key === 'Escape') location.hash = ''; return; }
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(index + 1); }
+    if (e.key === 'ArrowLeft') go(index - 1);
+  });
+  let wheelLock = false;
+  addEventListener('wheel', e => {
+    if (onCV()) return;
+    const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (wheelLock || Math.abs(d) < 20) return;
+    wheelLock = true; go(index + (d > 0 ? 1 : -1));
+    setTimeout(() => wheelLock = false, 650);
+  }, { passive: true });
+  addEventListener('resize', () => { sizeFog(); measure(); });
+
+  // ---- CV view (#cv) ---------------------------------------------------------
+  const nav = document.getElementById('nav');
+  function route() {
+    const cv = location.hash === '#cv';
+    document.body.classList.toggle('on-cv', cv);
+    nav.textContent = cv ? 'CLOSE' : 'CV';
+    nav.setAttribute('href', cv ? '#' : '#cv');
+  }
+  addEventListener('hashchange', route);
+  route();
+
+  measure();
+</script>
+</body>
+</html>

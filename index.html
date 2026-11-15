@@ -308,6 +308,7 @@
   // Soft banks drift across the whole site. At rest a veil sits over the print;
   // a swipe parts it, and if nothing happens for a while it slowly closes again.
   const FOG_SCALE = 0.25;                        // drawn small and stretched: the softness is free
+  const FOG_DENSITY = 1;                        // how thick the drifting banks are
   let clear = 0, clearTo = 0, lastReveal = -1e9;
   const banks = Array.from({ length: 16 }, () => ({
     x: Math.random(), y: Math.random(),
@@ -345,7 +346,7 @@
       if (b.x < -0.4) b.x += 1.8; if (b.x > 1.4) b.x -= 1.8;
       if (b.y < -0.3) b.y += 1.6; if (b.y > 1.3) b.y -= 1.6;
       const x = b.x * W, y = b.y * H, r = b.r * M;
-      const a = b.a * (0.75 + 0.25 * Math.sin(t * 0.13 + b.ph));
+      const a = FOG_DENSITY * b.a * (0.75 + 0.25 * Math.sin(t * 0.13 + b.ph));
       const g = fctx.createRadialGradient(x, y, 0, x, y, r);
       g.addColorStop(0, `rgba(${mistRGB}, ${a})`);
       g.addColorStop(0.55, `rgba(${mistRGB}, ${a * 0.45})`);
@@ -362,7 +363,7 @@
       rx = r.width * FOG_SCALE * 0.62; ry = r.height * FOG_SCALE * 0.62;
     }
     // the veil over the print, breathing a little
-    const veil = (1 - c) * (0.8 + 0.06 * Math.sin(t * 0.4));
+    const veil = onCV() ? 0 : (1 - c) * (0.8 + 0.06 * Math.sin(t * 0.4));   // no veil behind the CV text
     if (veil > 0.01) {
       fctx.save();
       fctx.translate(cx, cy); fctx.scale(1, ry / rx);
@@ -375,7 +376,7 @@
       fctx.restore();
     }
     // the clearing: drifting banks are pushed back from the print
-    if (c > 0.01) {
+    if (c > 0.01 && !onCV()) {
       fctx.globalCompositeOperation = 'destination-out';
       fctx.save();
       fctx.translate(cx, cy); fctx.scale(1, ry / rx);
