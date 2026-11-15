@@ -118,6 +118,10 @@
   .cv .yr { color: var(--muted); font-variant-numeric: tabular-nums; }
   .cv li, .cv h1, .cv .role { opacity: 0; transform: translateY(6px); transition: opacity .6s ease, transform .6s ease; }
 
+  .cv .social { display: inline-flex; margin-top: 40px; padding: 6px; margin-left: -6px; color: var(--muted); transition: color .2s, opacity .6s ease, transform .6s ease; }
+  .cv .social:hover { color: var(--ink); }
+  .cv .social { opacity: 0; transform: translateY(6px); }
+  body.on-cv .cv .social { opacity: 1; transform: none; transition-delay: .44s; }
   body.on-cv .cv { opacity: 1; visibility: visible; transition: opacity .5s ease; }
   body.on-cv .cv li, body.on-cv .cv h1, body.on-cv .cv .role { opacity: 1; transform: none; }
   body.on-cv .cv h1 { transition-delay: .1s; }
@@ -147,6 +151,13 @@
       <li><span class="yr">2021</span><span>M.Eng. in Systems and Control Engineering, Tokyo Institute of Technology</span></li>
       <li><span class="yr">2021</span><span>Joined Dentsu</span></li>
     </ol>
+    <a class="social" href="https://www.instagram.com/iphone1jp/" target="_blank" rel="noopener" aria-label="Instagram: iphone1jp">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6">
+        <rect x="3" y="3" width="18" height="18" rx="5"></rect>
+        <circle cx="12" cy="12" r="4.2"></circle>
+        <circle cx="17.4" cy="6.6" r="0.9" fill="currentColor" stroke="none"></circle>
+      </svg>
+    </a>
   </div>
 </section>
 
@@ -316,15 +327,15 @@
     const n = 8 + Math.floor(Math.random() * 6);
     const w = {
       x: rnd(-0.1, 1.0), y: rnd(0.05, 0.95),
-      vx: rnd(0.006, 0.02) * (Math.random() < 0.85 ? 1 : -1), vy: rnd(-0.003, 0.003),
+      vx: rnd(0.003, 0.01) * (Math.random() < 0.85 ? 1 : -1), vy: rnd(-0.0015, 0.0015),
       len: rnd(0.18, 0.42), tall: rnd(0.05, 0.12),          // long and low, like real fog
       peak: rnd(0.45, 0.85),
-      age: born ? rnd(0, 20) : 0, life: rnd(16, 32),
+      age: born ? rnd(0, 30) : 0, life: rnd(26, 48),
       puffs: [],
     };
     for (let i = 0; i < n; i++) w.puffs.push({
       u: rnd(-0.5, 0.5), v: rnd(-0.5, 0.5), r: rnd(0.35, 0.8),
-      su: rnd(0.04, 0.12), sp: rnd(0, 6.28),                 // each puff slowly wanders inside the wisp
+      su: rnd(0.02, 0.06), sp: rnd(0, 6.28),                 // each puff slowly wanders inside the wisp
     });
     return w;
   }
