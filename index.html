@@ -6,25 +6,22 @@
 <title>Kentaro Tsuji</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
-  /* Layout: one framed print, centered, inside a slow drifting fog; a swipe parts the fog and the next print surfaces. */
+  /* Layout: a grey room with white fog drifting through it; one framed print waits in the haze, and a swipe parts it. */
   :root {
-    --bg: #e8e6e1;
+    --bg: #b3b2ae;
     --frame: #ffffff;
-    --ink: #2c2b28;
-    --muted: #7a766f;
-    --faint: #aaa69f;
-    --rule: #cfccc5;
-    --shadow: 30, 26, 20;
-    --mist: 250, 249, 246;
+    --ink: #262624;
+    --muted: #4f4e4b;
+    --faint: #6c6b67;
+    --rule: #9f9e9a;
+    --shadow: 40, 38, 34;
+    --mist: 255, 255, 255;
     --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
     --pad: clamp(12px, 2.4vmin, 28px);   /* white frame width */
     --gutter: clamp(28px, 8vmin, 88px);  /* space around the print */
     --head: 64px;
+    color-scheme: light;
   }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-    --bg: #1d1c1a; --ink: #e6e3dd; --muted: #8c8880; --faint: #66635d; --rule: #3a3834; --shadow: 0, 0, 0; --mist: 52, 50, 47; color-scheme: dark } }
-  :root[data-theme="dark"] {
-    --bg: #1d1c1a; --ink: #e6e3dd; --muted: #8c8880; --faint: #66635d; --rule: #3a3834; --shadow: 0, 0, 0; --mist: 52, 50, 47; color-scheme: dark }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
@@ -308,7 +305,7 @@
   // Soft banks drift across the whole site. At rest a veil sits over the print;
   // a swipe parts it, and if nothing happens for a while it slowly closes again.
   const FOG_SCALE = 0.25;                        // drawn small and stretched: the softness is free
-  const FOG_DENSITY = 1;                        // how thick the drifting banks are
+  const FOG_DENSITY = 0.48;                        // how thick the drifting banks are
   let clear = 0, clearTo = 0, lastReveal = -1e9;
   const banks = Array.from({ length: 16 }, () => ({
     x: Math.random(), y: Math.random(),
