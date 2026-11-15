@@ -116,6 +116,8 @@
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const K = reduced ? 900 : 95;     // spring stiffness for the turn
   const D = reduced ? 60 : 17.5;    // damping (just under critical: the paper settles without bouncing)
+  const KF = reduced ? 900 : 24;    // the flight away is looser: a toss, not a snap
+  const DF = reduced ? 60 : 9;
   const PI = Math.PI;
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
@@ -133,7 +135,8 @@
     sheet.appendChild(img);
     el.appendChild(sheet);
     stage.appendChild(el);
-    const c = { el, sheet, img, i, t: 0, vt: 0, tt: 0, held: false, loaded: false, curl: null };
+    const c = { el, sheet, img, i, t: 0, vt: 0, tt: 0, f: 0, vf: 0, tf: 0,
+                held: false, loaded: false, curl: null, fx: -900, fy: -300, fr: -24 };
     img.onload = () => { c.loaded = true; draw(c); };
     img.onerror = () => { el.remove(); cards.splice(cards.indexOf(c), 1); cards.forEach((k, j) => k.i = j);
                           index = clamp(index, 0, cards.length - 1); retarget(); };
@@ -141,8 +144,18 @@
     return c;
   });
 
+  // A turned page keeps a little of its curl and flies off on a random diagonal.
+  const KEEP = 0.12;
+  function aim(c) {
+    const up = Math.random() < 0.5;
+    const deg = (up ? 200 : 115) + Math.random() * 45;          // up-left or down-left, never flat
+    const a = deg * PI / 180;
+    const dist = Math.hypot(innerWidth, innerHeight) * 0.5 + Math.hypot(c.sheet.offsetWidth, c.sheet.offsetHeight) * 0.55;
+    c.fx = Math.cos(a) * dist; c.fy = Math.sin(a) * dist;
+    c.fr = (up ? -1 : 1) * (14 + Math.random() * 26) * (Math.random() < 0.2 ? -1 : 1);
+  }
   function retarget() {
-    for (const c of cards) if (!c.held) c.tt = c.i < index ? 1 : 0;
+    for (const c of cards) if (!c.held) { c.tt = c.i < index ? KEEP : 0; c.tf = c.i < index ? 1 : 0; }
     count.textContent = `${String(index + 1).padStart(2, '0')} / ${String(cards.length).padStart(2, '0')}`;
     wake();
   }
@@ -188,7 +201,7 @@
 
   function renderCurl(c) {
     const { strips, flat, cast, W } = c.curl;
-    const t = clamp(c.t, -0.02, 1.04);
+    const t = clamp(c.t, -0.02, 1);
     // the paper loosens in the middle of the turn and tightens at the ends
     const Rb = clamp(W * 0.065, 14, 42);
     const R = Rb * (0.4 + 0.6 * smooth(0, 0.1, t)) * (1 + 0.3 * Math.sin(PI * clamp(t, 0, 1)));
@@ -208,12 +221,12 @@
     const edge = Math.max(0, fold) + (fold < W ? R : 0);  // rightmost point of the lifted paper
     flat.style.width = Math.max(0, Math.min(fold, W)) + 'px';
     cast.style.transform = `translateX(${Math.min(edge, W)}px) scaleX(${(0.4 + R / Rb * 0.6).toFixed(3)})`;
-    cast.style.opacity = (smooth(0, 0.06, t) * (1 - smooth(0.55, 0.95, t))).toFixed(3);
+    cast.style.opacity = (smooth(0, 0.06, t) * (1 - smooth(0.55, 0.95, t)) * (1 - smooth(0, 0.25, c.f))).toFixed(3);
   }
 
   function draw(c) {
     const d = c.i - index;
-    const turning = c.held || (Math.abs(c.t) > 0.0008 && c.t < 0.999);
+    const turning = c.held || (Math.abs(c.t) > 0.0008 && c.f < 0.999);
     if (turning && !c.curl && c.loaded) buildCurl(c);
     if (!turning && c.curl) dropCurl(c);
     if (c.curl) renderCurl(c);
@@ -221,11 +234,15 @@
     // the page underneath shows only while the one above it is being turned
     const above = cards[cards.indexOf(c) - 1];
     let op = 0;
-    if (d < 0) op = 1 - smooth(0.82, 1, c.t);
+    if (d < 0) op = 1 - smooth(0.7, 1, c.f);
     else if (d === 0) op = 1;
-    else if (d === 1 && above && (above.t > 0.0008 || above.held)) op = 1;
+    else if (d === 1 && above && (above.t > 0.0008 || above.f > 0.0008 || above.held)) op = 1;
     c.el.style.opacity = c.loaded ? op : 0;
     c.el.style.visibility = op > 0 || d === 0 ? 'visible' : 'hidden';
+    const f = c.f;
+    c.el.style.transform = f > 0.0005
+      ? `translate3d(${c.fx * f}px,${c.fy * f}px,0) rotate(${c.fr * f}deg) scale(${1 + 0.06 * Math.sin(PI * Math.min(f, 1))})`
+      : '';
   }
 
   // ---- physics loop -----------------------------------------------------------
@@ -238,7 +255,11 @@
       if (!c.held) {
         c.vt += (-K * (c.t - c.tt) - D * c.vt) * dt;
         c.t += c.vt * dt;
-        if (Math.abs(c.t - c.tt) < 0.0006 && Math.abs(c.vt) < 0.004) { c.t = c.tt; c.vt = 0; }
+        c.vf += (-KF * (c.f - c.tf) - DF * c.vf) * dt;
+        c.f += c.vf * dt;
+        const rest = Math.abs(c.t - c.tt) < 0.0006 && Math.abs(c.vt) < 0.004
+                  && Math.abs(c.f - c.tf) < 0.0006 && Math.abs(c.vf) < 0.004;
+        if (rest) { c.t = c.tt; c.vt = 0; c.f = c.tf; c.vf = 0; }
         else moving = true;
       } else moving = true;
     }
@@ -277,8 +298,11 @@
       if (index === cards.length - 1) t = 0.1 * (1 - Math.exp(-t / 0.1));   // last page: it lifts, then won't go
       c.t = t;
     } else {
+      // pull the last page back from wherever it flew, uncurling as it lands
       const c = cards[index - 1]; c.held = true;
-      c.t = clamp(1 - dx / span(c), 0, 1);
+      const p = clamp(dx / (span(c) * 0.55), 0, 1);
+      c.f = 1 - smooth(0, 1, p);
+      c.t = KEEP * (1 - smooth(0.35, 1, p));
     }
     wake();
   }
@@ -292,14 +316,16 @@
     for (const c of cards) {
       if (!c.held) continue;
       c.held = false;
-      c.vt = -v * 1000 / span(c);
+      c.vt = c.i < index ? 0 : -v * 1000 / span(c);
     }
     if (commit) {
       const { mode } = drag;
       if (mode === 'next' && index < cards.length - 1) {
-        if (cards[index].t > 0.28 || v < -0.4) index++;
+        const c = cards[index];
+        if (c.t > 0.22 || v < -0.4) { aim(c); c.vf = clamp(-v * 0.9, 0.5, 1.6); index++; }
       } else if (mode === 'prev') {
-        if (cards[index - 1].t < 0.78 || v > 0.4) index--;
+        const c = cards[index - 1];
+        if (c.f < 0.75 || v > 0.4) { c.vf = -clamp(v * 1.2, 0.4, 2.5); index--; }
       }
     }
     retarget();
@@ -319,8 +345,8 @@
   function go(i) {
     if (i >= cards.length) { cards[index].vt = 0.9; wake(); return; }   // a little lift: no more pages
     if (i < 0 || i === index) return;
-    if (i > index) cards[index].vt = 0.6;
-    else cards[i].vt = -0.6;
+    if (i > index) { const c = cards[index]; aim(c); c.vt = 1.2; c.vf = 0.6; }
+    else cards[i].vf = -0.8;
     index = i;
     retarget();
   }
