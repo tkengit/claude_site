@@ -77,6 +77,10 @@
     opacity: 0;
   }
   .print { position: relative; }
+  .print::after {                                /* mist that gathers over a print as it drifts into the fog */
+    content: ""; position: absolute; inset: -1px; pointer-events: none;
+    background: rgb(var(--mist)); opacity: var(--haze, 0);
+  }
   .print.ready { animation: surface 1.2s ease backwards; }
   @keyframes surface { from { opacity: 0; filter: blur(12px) brightness(1.2); } }
   .print img {
@@ -301,7 +305,7 @@
       const A = flying ? ghost.a : a;
       if (A >= 1 || !p.loaded) { p.el.style.visibility = 'hidden'; p.el.style.opacity = 0; return; }
       p.el.style.visibility = '';
-      if (A < 0.002) { p.el.style.filter = ''; p.el.style.transform = ''; p.el.style.opacity = 1; return; }
+      if (A < 0.002) { p.el.style.filter = ''; p.el.style.transform = ''; p.el.style.opacity = 1; p.el.style.setProperty('--haze', '0'); return; }
       if (leaving) {
         // lifted by the wind: it rises, drifts, turns a little in the air, and thins away
         const dir = flying ? ghost.dir : (d < 0 ? -1 : 1);
@@ -311,14 +315,17 @@
         const rz = ((i * 37) % 7 - 3) * 1.6 * e - dir * 4 * e;
         const rx = 22 * e, ry = -dir * 16 * e;
         p.el.style.transform = `translate3d(${x.toFixed(1)}px,${(-lift).toFixed(1)}px,0) perspective(900px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg) rotate(${rz.toFixed(2)}deg) scale(${(1 - 0.1 * e).toFixed(4)})`;
-        p.el.style.opacity = (1 - smooth(0.1, 0.62, A)).toFixed(3);
-        p.el.style.filter = `blur(${(3 * smooth(0.5, 1, A)).toFixed(2)}px) brightness(${(1 + 0.1 * e).toFixed(3)})`;
+        // and it goes into the fog: mist gathers over it and softens it before it is gone
+        p.el.style.setProperty('--haze', (0.88 * smooth(0.02, 0.5, A)).toFixed(3));
+        p.el.style.opacity = (1 - smooth(0.22, 0.72, A)).toFixed(3);
+        p.el.style.filter = `blur(${(9 * smooth(0.08, 0.7, A)).toFixed(2)}px) saturate(${(1 - 0.5 * smooth(0, 0.5, A)).toFixed(3)})`;
       } else {
         // the next print surfaces out of the fog in place
         const f = Math.pow(A, 1.15);
         p.el.style.opacity = (1 - smooth(0.04, 0.9, A)).toFixed(3);
         p.el.style.filter = `blur(${(16 * f).toFixed(2)}px) brightness(${(1 + 0.22 * f).toFixed(3)}) contrast(${(1 - 0.3 * f).toFixed(3)}) saturate(${(1 - 0.65 * f).toFixed(3)})`;
         p.el.style.transform = `scale(${(1 - 0.035 * A).toFixed(4)})`;
+        p.el.style.setProperty('--haze', '0');
       }
     });
     if (ghost && ghost.done) ghost = null;
