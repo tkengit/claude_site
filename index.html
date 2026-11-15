@@ -77,12 +77,6 @@
     opacity: 0;
   }
   .print { position: relative; }
-  .print::after {                                /* the light a leaving print melts into, top edge first */
-    content: ""; position: absolute; inset: -1px; pointer-events: none;
-    background: linear-gradient(to bottom,
-      rgba(255, 255, 255, 1) calc(var(--melt, 0) * 150% - 50%),
-      rgba(255, 255, 255, 0) calc(var(--melt, 0) * 150%));
-  }
   .print.ready { animation: surface 1.2s ease backwards; }
   @keyframes surface { from { opacity: 0; filter: blur(12px) brightness(1.2); } }
   .print img {
@@ -283,30 +277,51 @@
   // a = how far a print is from being the one shown (0 here .. 1 gone).
   // The leaving print and the arriving one meet halfway inside a soft haze.
   const smooth = (e0, e1, v) => { const t = clamp((v - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+  // The print that is let go is carried off like a sheet of paper on a breeze. It finishes its
+  // flight on its own slow clock, after the next print has already settled.
+  let ghost = null;                              // { i, a0, t0, dir, a }
+  const GHOST_MS = reduced ? 1 : 3400;
+  function launch(i, dir) {
+    if (i < 0 || i >= prints.length) return;
+    ghost = { i, a0: clamp(Math.abs(i - pos), 0, 1), t0: performance.now(), dir, a: 0 };
+    requestAnimationFrame(ghostLoop);
+  }
+  function ghostLoop() { if (!ghost) return; render(); if (ghost) requestAnimationFrame(ghostLoop); }
+
   function render() {
+    if (ghost) {
+      const k = clamp((performance.now() - ghost.t0) / GHOST_MS, 0, 1);
+      ghost.a = ghost.a0 + (1 - ghost.a0) * (1 - Math.pow(1 - k, 1.5)); // eases out: it lingers as it goes
+      if (k >= 1) ghost.done = true;
+    }
     prints.forEach((p, i) => {
       const d = i - pos, a = Math.abs(d);
-      if (a >= 1 || !p.loaded) { p.el.style.visibility = 'hidden'; p.el.style.opacity = 0; return; }
+      const flying = ghost && ghost.i === i;
+      const leaving = flying || (i === from && !ghost);
+      const A = flying ? ghost.a : a;
+      if (A >= 1 || !p.loaded) { p.el.style.visibility = 'hidden'; p.el.style.opacity = 0; return; }
       p.el.style.visibility = '';
-      p.el.style.opacity = (1 - smooth(i === from ? 0.6 : 0.04, i === from ? 1 : 0.9, a)).toFixed(3);
-      if (a < 0.002) { p.el.style.filter = ''; p.el.style.transform = ''; p.el.style.setProperty('--melt', '0'); return; }
-      const f = Math.pow(a, 1.15);
-      p.el.style.filter = `blur(${((i === from ? 4 : 16) * f).toFixed(2)}px) brightness(${(1 + 0.22 * f).toFixed(3)}) contrast(${(1 - 0.3 * f).toFixed(3)}) saturate(${(1 - 0.65 * f).toFixed(3)})`;
-      // the one leaving drifts a breath closer as it goes; the one arriving settles back into place
-      const leaving = i === from;
+      if (A < 0.002) { p.el.style.filter = ''; p.el.style.transform = ''; p.el.style.opacity = 1; return; }
       if (leaving) {
-        // the print that is let go rises a little and melts into soft light, from its top edge down;
-        // the picture itself never breaks, it only grows bright until it is light
-        const e = 1 - Math.pow(1 - a, 1.8);
-        const lift = e * Math.min(innerHeight * 0.12, 90);
-        p.el.style.transform = `translate3d(${(d * 10).toFixed(1)}px,${(-lift).toFixed(1)}px,0) scale(${(1 + 0.02 * e).toFixed(4)})`;
-        p.el.style.setProperty('--melt', smooth(0.02, 0.88, a).toFixed(3));
-        p.el.style.filter = `blur(${(14 * smooth(0.45, 1, a)).toFixed(2)}px) brightness(${(1 + 0.35 * e).toFixed(3)}) saturate(${(1 - 0.4 * e).toFixed(3)}) drop-shadow(0 0 ${(28 * e).toFixed(1)}px rgba(255,255,255,${(0.75 * e).toFixed(3)}))`;
+        // lifted by the wind: it rises, drifts, turns a little in the air, and thins away
+        const dir = flying ? ghost.dir : (d < 0 ? -1 : 1);
+        const e = 1 - Math.pow(1 - A, 1.6);
+        const lift = e * Math.min(innerHeight * 0.26, 210);
+        const x = dir * e * 70 + Math.sin(e * Math.PI * 1.3 + i) * 16 * e;
+        const rz = ((i * 37) % 7 - 3) * 1.6 * e - dir * 4 * e;
+        const rx = 22 * e, ry = -dir * 16 * e;
+        p.el.style.transform = `translate3d(${x.toFixed(1)}px,${(-lift).toFixed(1)}px,0) perspective(900px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg) rotate(${rz.toFixed(2)}deg) scale(${(1 - 0.1 * e).toFixed(4)})`;
+        p.el.style.opacity = (1 - smooth(0.42, 1, A)).toFixed(3);
+        p.el.style.filter = `blur(${(3 * smooth(0.5, 1, A)).toFixed(2)}px) brightness(${(1 + 0.1 * e).toFixed(3)})`;
       } else {
-        p.el.style.transform = `scale(${(1 - 0.035 * a).toFixed(4)})`;
-        p.el.style.setProperty('--melt', '0');
+        // the next print surfaces out of the fog in place
+        const f = Math.pow(A, 1.15);
+        p.el.style.opacity = (1 - smooth(0.04, 0.9, A)).toFixed(3);
+        p.el.style.filter = `blur(${(16 * f).toFixed(2)}px) brightness(${(1 + 0.22 * f).toFixed(3)}) contrast(${(1 - 0.3 * f).toFixed(3)}) saturate(${(1 - 0.65 * f).toFixed(3)})`;
+        p.el.style.transform = `scale(${(1 - 0.035 * A).toFixed(4)})`;
       }
     });
+    if (ghost && ghost.done) ghost = null;
   }
 
   // ---- spring ------------------------------------------------------------------
@@ -334,7 +349,7 @@
     vel += kick;
     setCount();
     ensure(index);
-    if (index !== from) reveal();
+    if (index !== from) { reveal(); launch(from, index > from ? -1 : 1); }
     wake();
   }
 
@@ -350,7 +365,7 @@
     const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
     if (!drag.axis && Math.hypot(dx, dy) > 5) {
       drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-      if (drag.axis === 'x') { drag.x0 = e.clientX; drag.p0 = pos; from = Math.round(pos); }
+      if (drag.axis === 'x') { drag.x0 = e.clientX; drag.p0 = pos; from = Math.round(pos); ghost = null; }
     }
     if (drag.axis !== 'x') return;
     holding = true; vel = 0;
@@ -383,7 +398,7 @@
       target = index;
       setCount();
       ensure(index);
-      if (index !== from) reveal();
+      if (index !== from) { reveal(); launch(from, index > from ? -1 : 1); }
       wake();
     } else if (!axis && e.type === 'pointerup') {
       go(index + (e.clientX > innerWidth / 3 ? 1 : -1));
