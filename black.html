@@ -219,6 +219,11 @@
     "44",
   ];
   const src = id => `photos/${id}.jpg`;
+  // a different order every visit
+  for (let i = photos.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [photos[i], photos[j]] = [photos[j], photos[i]];
+  }
 
   const stage = document.getElementById('stage');
   const count = document.getElementById('count');
