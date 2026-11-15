@@ -73,6 +73,11 @@
     box-shadow: 0 1px 2px rgba(var(--shadow), .08), 0 12px 34px -14px rgba(var(--shadow), .3);
     opacity: 0;
   }
+  .print { position: relative; }
+  .print::after {                                /* the haze that settles in front of a print as it sinks away */
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: rgb(var(--mist)); opacity: var(--haze, 0);
+  }
   .print.ready { animation: surface 1.2s ease backwards; }
   @keyframes surface { from { opacity: 0; filter: blur(12px) brightness(1.2); } }
   .print img {
@@ -279,19 +284,21 @@
       if (a >= 1 || !p.loaded) { p.el.style.visibility = 'hidden'; p.el.style.opacity = 0; return; }
       p.el.style.visibility = '';
       p.el.style.opacity = (1 - smooth(0.04, 0.9, a)).toFixed(3);
-      if (a < 0.002) { p.el.style.filter = ''; p.el.style.transform = ''; return; }
+      if (a < 0.002) { p.el.style.filter = ''; p.el.style.transform = ''; p.el.style.setProperty('--haze', '0'); return; }
       const f = Math.pow(a, 1.15);
-      p.el.style.filter = `blur(${((i === from ? 9 : 16) * f).toFixed(2)}px) brightness(${(1 + 0.22 * f).toFixed(3)}) contrast(${(1 - 0.3 * f).toFixed(3)}) saturate(${(1 - 0.65 * f).toFixed(3)})`;
+      p.el.style.filter = `blur(${((i === from ? 4 : 16) * f).toFixed(2)}px) brightness(${(1 + 0.22 * f).toFixed(3)}) contrast(${(1 - 0.3 * f).toFixed(3)}) saturate(${(1 - 0.65 * f).toFixed(3)})`;
       // the one leaving drifts a breath closer as it goes; the one arriving settles back into place
       const leaving = i === from;
       if (leaving) {
-        // the print that is let go floats up and away, light as paper, tilting a little as it rises
-        const lift = Math.pow(a, 1.25) * Math.min(innerHeight * 0.22, 170);
-        const sway = d * 34 + Math.sin(a * Math.PI) * 10 * (i % 2 ? 1 : -1);
-        const tilt = ((i * 37) % 7 - 3) * 0.9 * a;
-        p.el.style.transform = `translate3d(${sway.toFixed(1)}px,${(-lift).toFixed(1)}px,0) rotate(${tilt.toFixed(2)}deg) scale(${(1 + 0.025 * a).toFixed(4)})`;
+        // the print that is let go sinks back into the fog: it draws away into the distance
+        // and the haze in front of it thickens until it is gone
+        const e = 1 - Math.pow(1 - a, 2.2);                    // quick to start, slow to vanish
+        const s = 1 - 0.42 * e;
+        p.el.style.transform = `translate3d(${(d * 14).toFixed(1)}px,${(-e * 26).toFixed(1)}px,0) scale(${s.toFixed(4)})`;
+        p.el.style.setProperty('--haze', (0.9 * smooth(0, 0.85, a)).toFixed(3));
       } else {
         p.el.style.transform = `scale(${(1 - 0.035 * a).toFixed(4)})`;
+        p.el.style.setProperty('--haze', '0');
       }
     });
   }
