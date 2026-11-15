@@ -150,6 +150,16 @@
   <a href="#cv" class="nav" id="nav">CV</a>
 </header>
 
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- the leaving print turns to mist: cloud-shaped holes open through it while the image wavers -->
+  <filter id="evap" x="-15%" y="-15%" width="130%" height="130%" color-interpolation-filters="sRGB">
+    <feTurbulence id="evapNoise" type="fractalNoise" baseFrequency="0.009 0.014" numOctaves="3" seed="7" result="noise"></feTurbulence>
+    <feDisplacementMap id="evapWarp" in="SourceGraphic" in2="noise" scale="0" xChannelSelector="R" yChannelSelector="G" result="warped"></feDisplacementMap>
+    <feColorMatrix in="noise" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  1 0 0 0 0" result="field"></feColorMatrix>
+    <feComponentTransfer in="field" result="holes"><feFuncA id="evapCut" type="linear" slope="7" intercept="4"></feFuncA></feComponentTransfer>
+    <feComposite in="warped" in2="holes" operator="in"></feComposite>
+  </filter>
+</svg>
 <main class="stage" id="stage" aria-roledescription="carousel" aria-label="Photographs"></main>
 <canvas class="fog" id="fog"></canvas>
 <div class="count" id="count" aria-live="polite"></div>
@@ -276,17 +286,28 @@
   // a = how far a print is from being the one shown (0 here .. 1 gone).
   // The leaving print and the arriving one meet halfway inside a soft haze.
   const smooth = (e0, e1, v) => { const t = clamp((v - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+  const evapNoise = document.getElementById('evapNoise');
+  const evapWarp = document.getElementById('evapWarp');
+  const evapCut = document.getElementById('evapCut');
+  const evap = { seed: -1 };
   function render() {
     prints.forEach((p, i) => {
       const d = i - pos, a = Math.abs(d);
       if (a >= 1 || !p.loaded) { p.el.style.visibility = 'hidden'; p.el.style.opacity = 0; return; }
       p.el.style.visibility = '';
-      p.el.style.opacity = (1 - smooth(0.04, 0.9, a)).toFixed(3);
+      p.el.style.opacity = (1 - smooth(i === from ? 0.55 : 0.04, i === from ? 1 : 0.9, a)).toFixed(3);
       if (a < 0.002) { p.el.style.filter = ''; p.el.style.transform = ''; return; }
       const f = Math.pow(a, 1.15);
-      p.el.style.filter = `blur(${((i === from ? 9 : 16) * f).toFixed(2)}px) brightness(${(1 + 0.22 * f).toFixed(3)}) contrast(${(1 - 0.3 * f).toFixed(3)}) saturate(${(1 - 0.65 * f).toFixed(3)})`;
-      // the one leaving drifts a breath closer as it goes; the one arriving settles back into place
       const leaving = i === from;
+      if (leaving) {
+        // it evaporates: holes shaped like cloud open up through the print, and the image wavers like heat haze
+        if (evap.seed !== i) { evapNoise.setAttribute('seed', String(3 + i * 7)); evap.seed = i; }
+        evapWarp.setAttribute('scale', (Math.pow(a, 1.3) * 46).toFixed(1));
+        evapCut.setAttribute('intercept', (4 - 11.5 * Math.pow(a, 0.85)).toFixed(3));
+        p.el.style.filter = `url(#evap) blur(${(2.5 * f).toFixed(2)}px) brightness(${(1 + 0.18 * f).toFixed(3)}) saturate(${(1 - 0.5 * f).toFixed(3)})`;
+      } else {
+        p.el.style.filter = `blur(${(16 * f).toFixed(2)}px) brightness(${(1 + 0.22 * f).toFixed(3)}) contrast(${(1 - 0.3 * f).toFixed(3)}) saturate(${(1 - 0.65 * f).toFixed(3)})`;
+      }
       if (leaving) {
         // the print that is let go floats up and away, light as paper, tilting a little as it rises
         const lift = Math.pow(a, 1.25) * Math.min(innerHeight * 0.22, 170);
