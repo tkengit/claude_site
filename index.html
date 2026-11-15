@@ -135,6 +135,7 @@
 
 <main class="stage" id="stage" aria-roledescription="carousel" aria-label="Photographs"></main>
 <canvas class="dust" id="dust"></canvas>
+<canvas class="dust" id="grain"></canvas>
 <div class="count" id="count" aria-live="polite"></div>
 
 <section class="cv" id="cv" aria-label="CV">
@@ -167,6 +168,9 @@
   const count = document.getElementById('count');
   const dust = document.getElementById('dust');
   const ctx = dust.getContext('2d');
+  const grain = document.getElementById('grain');
+  const gctx = grain.getContext('2d');
+  let gimg = null, gbuf = null;                  // a pixel buffer the loose grains are written into
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const onCV = () => document.body.classList.contains('on-cv');
@@ -178,11 +182,14 @@
     const img = new Image();
     img.alt = '';
     img.decoding = 'async';
+    img.crossOrigin = 'anonymous';               // lets the grains read the photo's colours
     el.appendChild(img);
     stage.appendChild(el);
     const p = { el, img, w: 0, loaded: false };
     img.onload = () => { p.loaded = true; el.classList.add('ready'); measure(); };
-    img.onerror = () => { el.remove(); prints = prints.filter(q => q !== p); index = clamp(index, 0, prints.length - 1); pos = target = index; measure(); };
+    img.onerror = () => {
+      if (img.crossOrigin) { img.removeAttribute('crossorigin'); img.src = img.src; return; }   // retry without colour access
+      el.remove(); prints = prints.filter(q => q !== p); index = clamp(index, 0, prints.length - 1); pos = target = index; measure(); };
     img.src = src(id);
     return p;
   });
@@ -209,11 +216,15 @@
   const dpr = () => Math.min(2, devicePixelRatio || 1);
 
   function sizeCanvas() {
-    dust.width = Math.round(innerWidth * dpr()); dust.height = Math.round(innerHeight * dpr());
-    ctx.setTransform(dpr(), 0, 0, dpr(), 0, 0);
+    const k = dpr();
+    dust.width = grain.width = Math.round(innerWidth * k);
+    dust.height = grain.height = Math.round(innerHeight * k);
+    ctx.setTransform(k, 0, 0, k, 0, 0);
+    gimg = gctx.createImageData(grain.width, grain.height);
+    gbuf = new Uint32Array(gimg.data.buffer);
   }
 
-  function grains(p) {                           // cut the print into fine grains (once)
+  function grains(p) {                           // cut the print into very fine grains (once)
     if (p.dust) return p.dust;
     const prevT = p.el.style.transform; p.el.style.transform = '';
     const r = p.el.getBoundingClientRect();
@@ -222,45 +233,66 @@
     const k = dpr();
     const sheet = document.createElement('canvas');
     sheet.width = Math.round(r.width * k); sheet.height = Math.round(r.height * k);
-    const sc = sheet.getContext('2d');
+    const sc = sheet.getContext('2d', { willReadFrequently: true });
     sc.scale(k, k);
     sc.fillStyle = getComputedStyle(p.el).backgroundColor;
     sc.fillRect(0, 0, r.width, r.height);
     sc.drawImage(p.img, ir.left - r.left, ir.top - r.top, ir.width, ir.height);
-    const cell = clamp(Math.round(Math.sqrt(r.width * r.height / 18000)), 2, 4);
+    let px = null;
+    try { px = new Uint32Array(sc.getImageData(0, 0, sheet.width, sheet.height).data.buffer); } catch (e) { px = null; }
+    // ~1 CSS px grains on a phone, a little larger on a big screen
+    const cell = clamp(Math.round(Math.sqrt(r.width * r.height / 70000)), 1, 3);
     const cols = [];
     for (let x = 0; x < r.width; x += cell) {
-      const col = { x, u: x / r.width, grains: [] };
-      for (let y = 0; y < r.height; y += cell) {
-        col.grains.push({
-          y, r: Math.random(),
-          dist: 24 + Math.random() * 90,              // how far along the wind it drifts
-          sp: (Math.random() - 0.5) * 2,              // a little sideways scatter
-          wob: Math.random() * 6.28,
-        });
+      const n = Math.ceil(r.height / cell);
+      const col = { x, u: x / r.width, y: new Float32Array(n), r: new Float32Array(n), dist: new Float32Array(n),
+                    sp: new Float32Array(n), wob: new Float32Array(n), rgb: new Uint32Array(n) };
+      const sx = Math.min(sheet.width - 1, Math.round((x + cell / 2) * k));
+      for (let j = 0; j < n; j++) {
+        const y = j * cell;
+        col.y[j] = y; col.r[j] = Math.random();
+        col.dist[j] = 24 + Math.random() * 90;              // how far along the wind it drifts
+        col.sp[j] = (Math.random() - 0.5) * 2;              // a little sideways scatter
+        col.wob[j] = Math.random() * 6.28;
+        const sy = Math.min(sheet.height - 1, Math.round((y + cell / 2) * k));
+        col.rgb[j] = px ? (px[sy * sheet.width + sx] & 0x00ffffff) : 0x00f0f0f0;
       }
       cols.push(col);
     }
     return (p.dust = { sheet, rect: { left: r.left, top: r.top, width: r.width, height: r.height }, cell, dpr: k, cols });
   }
-  // each move, a fresh diagonal per print: up or down at a random angle, never flat
-  const newTilt = () => (Math.random() < 0.5 ? -1 : 1) * (22 + Math.random() * 30) * Math.PI / 180;
+  // each move, a fresh direction per print: mostly a shallow slant, now and then almost flat
+  const newTilt = () => (Math.random() * 2 - 1) * 16 * Math.PI / 180;
+
+  let bx0, by0, bx1, by1;                        // area touched this frame
+  let lastBox = null;                            // area touched last frame
+  function plot(x, y, size, rgb, alpha) {        // write one grain into the pixel buffer
+    const W = grain.width, H = grain.height;
+    let x0 = Math.round(x), y0 = Math.round(y);
+    if (x0 >= W || y0 >= H || x0 + size <= 0 || y0 + size <= 0) return;
+    const c = (rgb | ((alpha & 255) << 24)) >>> 0;
+    const x1 = Math.min(W, x0 + size), y1 = Math.min(H, y0 + size);
+    if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0;
+    if (x0 < bx0) bx0 = x0; if (y0 < by0) by0 = y0; if (x1 > bx1) bx1 = x1; if (y1 > by1) by1 = y1;
+    for (let yy = y0; yy < y1; yy++) {
+      const row = yy * W;
+      for (let xx = x0; xx < x1; xx++) gbuf[row + xx] = c;
+    }
+  }
 
   function drawPrint(p, d) {
     const L = grains(p);
     if (p.tilt == null) p.tilt = newTilt();
     const a = Math.abs(d);
     const side = d < 0 ? -1 : 1;                 // which side of centre it is on
-    const slope = Math.tan(p.tilt);
-    const ox = L.rect.left + d * S, oy = L.rect.top + a * S * slope * 0.75;
+    const ox = L.rect.left + d * S, oy = L.rect.top + a * S * Math.tan(p.tilt) * 0.75;
     const ux = side * Math.cos(p.tilt), uy = Math.sin(p.tilt);   // wind direction
-    const px = -uy, py = ux;                                     // across the wind
+    const qx = -uy, qy = ux;                                     // across the wind
     const { sheet, cell, rect } = L, k2 = L.dpr;
     const k = a * 1.75;                          // the dust front
     const reach = k / 0.86;                      // beyond this, every grain is still in place
     // the intact part of the print, in one piece
     const cut = side < 0 ? rect.width * Math.min(1, reach) : rect.width * (1 - Math.min(1, reach));
-    ctx.globalAlpha = 1;
     if (side < 0 && cut < rect.width) {
       const x0 = Math.floor(cut / cell) * cell;
       ctx.drawImage(sheet, x0 * k2, 0, (rect.width - x0) * k2, rect.height * k2, ox + x0, oy, rect.width - x0, rect.height);
@@ -268,41 +300,50 @@
       const x1 = Math.ceil(cut / cell) * cell;
       ctx.drawImage(sheet, 0, 0, x1 * k2, rect.height * k2, ox, oy, x1, rect.height);
     }
-    // the dusty band, grain by grain
-    const sw = cell * k2;
+    // the dusty band, grain by grain, straight into pixels
+    const full = Math.max(1, Math.round(cell * k2));
     for (const col of L.cols) {
       const lead = side < 0 ? col.u : 1 - col.u; // 0 at the outer edge
       if (lead > reach) continue;
-      for (const g of col.grains) {
-        const t = clamp((k - (lead * 0.86 + g.r * 0.14)) / LIFE, 0, 1);
+      const base = k - lead * 0.86;
+      const n = col.y.length;
+      for (let j = 0; j < n; j++) {
+        const t = (base - col.r[j] * 0.14) / LIFE;
         if (t >= 1) continue;
-        if (t <= 0) {
-          ctx.globalAlpha = 1;
-          ctx.drawImage(sheet, col.x * k2, g.y * k2, sw, sw, ox + col.x, oy + g.y, cell + 0.5, cell + 0.5);
-          continue;
-        }
+        if (t <= 0) { plot((ox + col.x) * k2, (oy + col.y[j]) * k2, full, col.rgb[j], 255); continue; }
         const e = t * t;
-        const w = Math.sin(g.wob + t * 4) * 3 * t;
-        const x = ox + col.x + (ux * g.dist + px * g.sp * 18) * e + px * w;
-        const y = oy + g.y + (uy * g.dist + py * g.sp * 18) * e + py * w;
-        const s = cell * (1 - 0.5 * t);
-        ctx.globalAlpha = 1 - t;
-        ctx.drawImage(sheet, col.x * k2, g.y * k2, sw, sw, x, y, s, s);
+        const w = Math.sin(col.wob[j] + t * 4) * 3 * t;
+        const along = col.dist[j] * e, across = col.sp[j] * 18 * e + w;
+        const x = ox + col.x + ux * along + qx * across;
+        const y = oy + col.y[j] + uy * along + qy * across;
+        plot(x * k2, y * k2, Math.max(1, Math.round(full * (1 - 0.5 * t))), col.rgb[j], (1 - t) * 255);
       }
     }
-    ctx.globalAlpha = 1;
   }
 
   function render() {
     ctx.clearRect(0, 0, innerWidth, innerHeight);
+    let any = false;
     prints.forEach((p, i) => {
       const d = i - pos, a = Math.abs(d);
       p.el.style.transform = `translate3d(${d * S}px,0,0)`;
       if (a < 0.0015) { p.el.style.visibility = ''; return; }
       if (reduced || !p.loaded) { p.el.style.visibility = a > 1.6 ? 'hidden' : ''; return; }
       p.el.style.visibility = 'hidden';          // drawn as dust instead
-      if (a < 1.2) drawPrint(p, d);
+      if (a < 1.2) {
+        if (!any) { any = true; bx0 = by0 = Infinity; bx1 = by1 = -Infinity; }
+        drawPrint(p, d);
+      }
     });
+    // only the touched area is written back, and cleared again next frame
+    const W = grain.width;
+    if (lastBox) gctx.clearRect(lastBox.x, lastBox.y, lastBox.w, lastBox.h);
+    if (any && bx1 > bx0) {
+      const r = { x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 };
+      gctx.putImageData(gimg, 0, 0, r.x, r.y, r.w, r.h);
+      for (let yy = r.y; yy < r.y + r.h; yy++) gbuf.fill(0, yy * W + r.x, yy * W + r.x + r.w);
+      lastBox = r;
+    } else lastBox = null;
   }
 
   // ---- spring ------------------------------------------------------------------
