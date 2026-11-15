@@ -80,13 +80,14 @@
   @keyframes surface { from { opacity: 0; filter: blur(12px) brightness(1.2); } }
   .print img {
     display: block;
-    max-width: calc(100vw - 2 * var(--gutter) - 2 * var(--pad));
-    max-height: calc(100dvh - max(var(--gutter), calc(var(--head) + env(safe-area-inset-top, 0px))) - var(--gutter) - 16px - 2 * var(--pad));
+    max-width: calc((100vw - 2 * var(--gutter) - 2 * var(--pad)) * .8);      /* prints shown at 80% of the room they have */
+    max-height: calc((100dvh - max(var(--gutter), calc(var(--head) + env(safe-area-inset-top, 0px))) - var(--gutter) - 16px - 2 * var(--pad)) * .8);
     width: auto; height: auto;
     pointer-events: none; -webkit-user-drag: none;
   }
   .print { will-change: transform, opacity, filter; }
   .fog { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
+  body.on-cv .fog { z-index: 6; }               /* on the CV the fog drifts in front of the glass too */
   .count {
     position: fixed; left: 0; right: 0; z-index: 4;
     bottom: max(calc(var(--gutter) / 2 - 4px), env(safe-area-inset-bottom, 0px));
@@ -210,7 +211,6 @@
     "32",
     "33",
     "34",
-    "35",
     "36",
     "37",
     "38",
@@ -425,7 +425,7 @@
       w.x += w.vx * dt; w.y += w.vy * dt + Math.sin(t * 0.07 + k) * 0.0004;
       if (w.age > w.life || w.x > 1.4 || w.x < -0.5) { wisps[k] = wisp(false); continue; }
       const fade = Math.min(1, w.age / 5) * Math.min(1, (w.life - w.age) / 6);   // fade in, linger, fade out
-      const A = w.peak * fade * fade * (3 - 2 * fade) * FOG_DENSITY;
+      const A = w.peak * fade * fade * (3 - 2 * fade) * FOG_DENSITY * (onCV() ? 0.4 : 1);   // lighter on the CV, where it drifts over the text
       if (A < 0.005) continue;
       for (const p of w.puffs) {
         const px = (w.x + (p.u + Math.sin(t * p.su + p.sp) * 0.18) * w.len) * W;
