@@ -284,10 +284,18 @@
       p.el.style.opacity = (1 - smooth(0.04, 0.9, a)).toFixed(3);
       if (a < 0.002) { p.el.style.filter = ''; p.el.style.transform = ''; return; }
       const f = Math.pow(a, 1.15);
-      p.el.style.filter = `blur(${(16 * f).toFixed(2)}px) brightness(${(1 + 0.22 * f).toFixed(3)}) contrast(${(1 - 0.3 * f).toFixed(3)}) saturate(${(1 - 0.65 * f).toFixed(3)})`;
+      p.el.style.filter = `blur(${((i === from ? 9 : 16) * f).toFixed(2)}px) brightness(${(1 + 0.22 * f).toFixed(3)}) contrast(${(1 - 0.3 * f).toFixed(3)}) saturate(${(1 - 0.65 * f).toFixed(3)})`;
       // the one leaving drifts a breath closer as it goes; the one arriving settles back into place
       const leaving = i === from;
-      p.el.style.transform = `scale(${(leaving ? 1 + 0.03 * a : 1 - 0.035 * a).toFixed(4)})`;
+      if (leaving) {
+        // the print that is let go floats up and away, light as paper, tilting a little as it rises
+        const lift = Math.pow(a, 1.25) * Math.min(innerHeight * 0.22, 170);
+        const sway = d * 34 + Math.sin(a * Math.PI) * 10 * (i % 2 ? 1 : -1);
+        const tilt = ((i * 37) % 7 - 3) * 0.9 * a;
+        p.el.style.transform = `translate3d(${sway.toFixed(1)}px,${(-lift).toFixed(1)}px,0) rotate(${tilt.toFixed(2)}deg) scale(${(1 + 0.025 * a).toFixed(4)})`;
+      } else {
+        p.el.style.transform = `scale(${(1 - 0.035 * a).toFixed(4)})`;
+      }
     });
   }
 
