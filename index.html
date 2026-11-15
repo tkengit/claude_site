@@ -6,7 +6,7 @@
 <title>Kentaro Tsuji</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
-  /* Layout: one framed print at a time on a rail; the print leaving drifts off on a random diagonal and frays into fine dust. */
+  /* Layout: one framed print at a time on a rail; prints leave and arrive on random diagonals as fine dust. */
   :root {
     --bg: #e8e6e1;
     --frame: #ffffff;
@@ -201,30 +201,29 @@
     count.textContent = `${String(index + 1).padStart(2, '0')} / ${String(prints.length).padStart(2, '0')}`;
   }
 
-  // ---- dust: the print that is leaving frays from its outer edge -------------
-  // Grain state is a pure function of how far the print is from centre, so it
-  // follows the finger both ways and reassembles if you bring the print back.
-  let leaving = null;                            // { p, sheet, rect, cell, dpr, cols }
-  const LIFE = 0.32;                             // share of the slide one grain takes to drift away
+  // ---- dust: any print away from centre is part dust ---------------------------
+  // The print leaving frays from its outer edge; the one arriving gathers out of dust
+  // from its inner edge. Grain state is a pure function of the distance from centre,
+  // so it follows the finger both ways.
+  const LIFE = 0.32;                             // share of the slide one grain takes to drift
+  const dpr = () => Math.min(2, devicePixelRatio || 1);
 
   function sizeCanvas() {
-    const dpr = Math.min(2, devicePixelRatio || 1);
-    dust.width = Math.round(innerWidth * dpr); dust.height = Math.round(innerHeight * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    dust.width = Math.round(innerWidth * dpr()); dust.height = Math.round(innerHeight * dpr());
+    ctx.setTransform(dpr(), 0, 0, dpr(), 0, 0);
   }
 
-  function prepare(p) {                          // cut the print into fine grains
-    if (reduced || !p || !p.loaded) { leaving = null; return; }
-    if (leaving && leaving.p === p) return;
+  function grains(p) {                           // cut the print into fine grains (once)
+    if (p.dust) return p.dust;
     const prevT = p.el.style.transform; p.el.style.transform = '';
     const r = p.el.getBoundingClientRect();
     const ir = p.img.getBoundingClientRect();
     p.el.style.transform = prevT;
-    const dpr = Math.min(2, devicePixelRatio || 1);
+    const k = dpr();
     const sheet = document.createElement('canvas');
-    sheet.width = Math.round(r.width * dpr); sheet.height = Math.round(r.height * dpr);
+    sheet.width = Math.round(r.width * k); sheet.height = Math.round(r.height * k);
     const sc = sheet.getContext('2d');
-    sc.scale(dpr, dpr);
+    sc.scale(k, k);
     sc.fillStyle = getComputedStyle(p.el).backgroundColor;
     sc.fillRect(0, 0, r.width, r.height);
     sc.drawImage(p.img, ir.left - r.left, ir.top - r.top, ir.width, ir.height);
@@ -242,50 +241,44 @@
       }
       cols.push(col);
     }
-    // each time, a fresh diagonal: the print leaves up or down at a random angle, never flat
-    const tilt = (Math.random() < 0.5 ? -1 : 1) * (22 + Math.random() * 30) * Math.PI / 180;
-    leaving = { p, sheet, rect: { left: r.left, top: r.top, width: r.width, height: r.height }, cell, dpr, cols, tilt };
+    return (p.dust = { sheet, rect: { left: r.left, top: r.top, width: r.width, height: r.height }, cell, dpr: k, cols });
   }
+  // each move, a fresh diagonal per print: up or down at a random angle, never flat
+  const newTilt = () => (Math.random() < 0.5 ? -1 : 1) * (22 + Math.random() * 30) * Math.PI / 180;
 
-  function drawDust() {
-    ctx.clearRect(0, 0, innerWidth, innerHeight);
-    const L = leaving;
-    if (!L) return;
-    const i = prints.indexOf(L.p);
-    const d = i - pos;
+  function drawPrint(p, d) {
+    const L = grains(p);
+    if (p.tilt == null) p.tilt = newTilt();
     const a = Math.abs(d);
-    if (a < 0.0015) { L.p.el.style.visibility = ''; return; }
-    L.p.el.style.visibility = 'hidden';
-    const side = d < 0 ? -1 : 1;                 // which way it is sliding out
-    const slope = Math.tan(L.tilt);
+    const side = d < 0 ? -1 : 1;                 // which side of centre it is on
+    const slope = Math.tan(p.tilt);
     const ox = L.rect.left + d * S, oy = L.rect.top + a * S * slope * 0.75;
-    const ux = side * Math.cos(L.tilt), uy = Math.sin(L.tilt);   // wind direction
+    const ux = side * Math.cos(p.tilt), uy = Math.sin(p.tilt);   // wind direction
     const px = -uy, py = ux;                                     // across the wind
-    const { sheet, cell, dpr, rect } = L;
-    const k = a * 1.75;                          // the fraying front: gone well before it leaves the screen
-    const reach = k / 0.86;                      // beyond this, nothing has started to fray
-    // the untouched part of the print, in one piece
+    const { sheet, cell, rect } = L, k2 = L.dpr;
+    const k = a * 1.75;                          // the dust front
+    const reach = k / 0.86;                      // beyond this, every grain is still in place
+    // the intact part of the print, in one piece
     const cut = side < 0 ? rect.width * Math.min(1, reach) : rect.width * (1 - Math.min(1, reach));
     ctx.globalAlpha = 1;
     if (side < 0 && cut < rect.width) {
       const x0 = Math.floor(cut / cell) * cell;
-      ctx.drawImage(sheet, x0 * dpr, 0, (rect.width - x0) * dpr, rect.height * dpr, ox + x0, oy, rect.width - x0, rect.height);
+      ctx.drawImage(sheet, x0 * k2, 0, (rect.width - x0) * k2, rect.height * k2, ox + x0, oy, rect.width - x0, rect.height);
     } else if (side > 0 && cut > 0) {
       const x1 = Math.ceil(cut / cell) * cell;
-      ctx.drawImage(sheet, 0, 0, x1 * dpr, rect.height * dpr, ox, oy, x1, rect.height);
+      ctx.drawImage(sheet, 0, 0, x1 * k2, rect.height * k2, ox, oy, x1, rect.height);
     }
-    // the fraying band, grain by grain
-    const sw = cell * dpr;
+    // the dusty band, grain by grain
+    const sw = cell * k2;
     for (const col of L.cols) {
       const lead = side < 0 ? col.u : 1 - col.u; // 0 at the outer edge
       if (lead > reach) continue;
       for (const g of col.grains) {
-        const delay = lead * 0.86 + g.r * 0.14;
-        const t = clamp((k - delay) / LIFE, 0, 1);
+        const t = clamp((k - (lead * 0.86 + g.r * 0.14)) / LIFE, 0, 1);
         if (t >= 1) continue;
         if (t <= 0) {
           ctx.globalAlpha = 1;
-          ctx.drawImage(sheet, col.x * dpr, g.y * dpr, sw, sw, ox + col.x, oy + g.y, cell + 0.5, cell + 0.5);
+          ctx.drawImage(sheet, col.x * k2, g.y * k2, sw, sw, ox + col.x, oy + g.y, cell + 0.5, cell + 0.5);
           continue;
         }
         const e = t * t;
@@ -294,19 +287,22 @@
         const y = oy + g.y + (uy * g.dist + py * g.sp * 18) * e + py * w;
         const s = cell * (1 - 0.5 * t);
         ctx.globalAlpha = 1 - t;
-        ctx.drawImage(sheet, col.x * dpr, g.y * dpr, sw, sw, x, y, s, s);
+        ctx.drawImage(sheet, col.x * k2, g.y * k2, sw, sw, x, y, s, s);
       }
     }
     ctx.globalAlpha = 1;
   }
 
   function render() {
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
     prints.forEach((p, i) => {
-      const d = i - pos;
-      p.el.style.visibility = Math.abs(d) > 1.6 ? 'hidden' : '';
+      const d = i - pos, a = Math.abs(d);
       p.el.style.transform = `translate3d(${d * S}px,0,0)`;
+      if (a < 0.0015) { p.el.style.visibility = ''; return; }
+      if (reduced || !p.loaded) { p.el.style.visibility = a > 1.6 ? 'hidden' : ''; return; }
+      p.el.style.visibility = 'hidden';          // drawn as dust instead
+      if (a < 1.2) drawPrint(p, d);
     });
-    drawDust();
   }
 
   // ---- spring ------------------------------------------------------------------
@@ -320,7 +316,7 @@
       pos += vel * dt;
       if (Math.abs(pos - target) < 0.0004 && Math.abs(vel) < 0.002) {
         pos = target; vel = 0; render();
-        if (leaving) { leaving.p.el.style.visibility = ''; leaving = null; drawDust(); }
+        prints.forEach(q => q.tilt = null);     // next move picks new diagonals
         raf = 0; return;
       }
     }
@@ -331,7 +327,6 @@
     if (i < 0 || i >= prints.length) kick += (i < 0 ? -1 : 1) * 0.9;   // the end of the rail: a soft bump
     const from = Math.round(pos);
     index = clamp(i, 0, prints.length - 1);
-    if (index !== from) prepare(prints[from]);
     target = index;
     vel += kick;
     setCount();
@@ -350,7 +345,7 @@
     const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
     if (!drag.axis && Math.hypot(dx, dy) > 5) {
       drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-      if (drag.axis === 'x') { drag.x0 = e.clientX; drag.p0 = pos; prepare(prints[Math.round(pos)]); }
+      if (drag.axis === 'x') { drag.x0 = e.clientX; drag.p0 = pos; }
     }
     if (drag.axis !== 'x') return;
     holding = true; vel = 0;
@@ -404,7 +399,7 @@
     wheelLock = true; go(index + (d > 0 ? 1 : -1));
     setTimeout(() => wheelLock = false, 650);
   }, { passive: true });
-  addEventListener('resize', () => { sizeCanvas(); leaving = null; measure(); });
+  addEventListener('resize', () => { sizeCanvas(); prints.forEach(q => q.dust = null); measure(); });
 
   // ---- CV view (#cv) ---------------------------------------------------------
   const nav = document.getElementById('nav');
