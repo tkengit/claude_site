@@ -100,25 +100,20 @@
   .cv {
     position: fixed; inset: 0; z-index: 5;
     overflow-y: auto;
-    padding-top: calc(var(--head) + env(safe-area-inset-top, 0px) + clamp(16px, 8vh, 96px));
+    padding-top: calc(var(--head) + env(safe-area-inset-top, 0px) + clamp(48px, 14vh, 140px));
     padding-bottom: 80px;
     padding-left: max(20px, env(safe-area-inset-left, 0px));
     padding-right: max(20px, env(safe-area-inset-right, 0px));
-    background: transparent;                     /* the fog keeps drifting behind the text */
+    background: rgba(var(--glass), var(--glass-a));
+    -webkit-backdrop-filter: blur(28px) saturate(1.2);
+    backdrop-filter: blur(28px) saturate(1.2);
     opacity: 0; visibility: hidden;
     transition: opacity .5s ease, visibility 0s linear .5s;
   }
-  /* the CV sits on the home screen like a pane of frosted glass */
+  /* the whole screen turns to frosted glass, with the home screen softly behind it */
   .cv-inner {
     max-width: 620px; margin: 0 auto;
-    padding: clamp(28px, 6vw, 48px);
-    border-radius: 18px;
-    background: rgba(var(--glass), var(--glass-a));
-    -webkit-backdrop-filter: blur(26px) saturate(1.25);
-    backdrop-filter: blur(26px) saturate(1.25);
-    border: 1px solid var(--glass-edge);
-    box-shadow: inset 0 1px 0 var(--glass-edge), 0 30px 80px -30px rgba(var(--shadow), .35);
-    transform: translateY(14px) scale(.985);
+    transform: translateY(10px);
     transition: transform .7s cubic-bezier(.2, .8, .2, 1);
   }
   body.on-cv .cv-inner { transform: none; }
