@@ -115,10 +115,9 @@
   .cv .yr { color: var(--muted); font-variant-numeric: tabular-nums; }
   .cv li, .cv h1, .cv .role { opacity: 0; transform: translateY(6px); transition: opacity .6s ease, transform .6s ease; }
 
-  .cv .social { display: inline-flex; margin-top: 40px; padding: 6px; margin-left: -6px; color: var(--muted); transition: color .2s, opacity .6s ease, transform .6s ease; }
+  .cv .role { display: flex; align-items: center; gap: 8px; }
+  .cv .social { display: inline-flex; padding: 4px; color: var(--muted); transition: color .2s; }
   .cv .social:hover { color: var(--ink); }
-  .cv .social { opacity: 0; transform: translateY(6px); }
-  body.on-cv .cv .social { opacity: 1; transform: none; transition-delay: .44s; }
   body.on-cv .cv { opacity: 1; visibility: visible; transition: opacity .5s ease; }
   body.on-cv .cv li, body.on-cv .cv h1, body.on-cv .cv .role { opacity: 1; transform: none; }
   body.on-cv .cv h1 { transition-delay: .1s; }
@@ -142,19 +141,20 @@
 <section class="cv" id="cv" aria-label="CV">
   <div class="cv-inner">
     <h1>KENTARO TSUJI</h1>
-    <p class="role">iPhone 1 Photographer</p>
+    <p class="role">iPhone 1 Photographer
+      <a class="social" href="https://www.instagram.com/iphone1jp/" target="_blank" rel="noopener" aria-label="Instagram: iphone1jp">
+        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6">
+          <rect x="3" y="3" width="18" height="18" rx="5"></rect>
+          <circle cx="12" cy="12" r="4.2"></circle>
+          <circle cx="17.4" cy="6.6" r="0.9" fill="currentColor" stroke="none"></circle>
+        </svg>
+      </a>
+    </p>
     <ol>
       <li><span class="yr">1996</span><span>Born in Saga, Japan</span></li>
       <li><span class="yr">2021</span><span>M.Eng. in Systems and Control Engineering, Tokyo Institute of Technology</span></li>
       <li><span class="yr">2021</span><span>Joined Dentsu</span></li>
     </ol>
-    <a class="social" href="https://www.instagram.com/iphone1jp/" target="_blank" rel="noopener" aria-label="Instagram: iphone1jp">
-      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6">
-        <rect x="3" y="3" width="18" height="18" rx="5"></rect>
-        <circle cx="12" cy="12" r="4.2"></circle>
-        <circle cx="17.4" cy="6.6" r="0.9" fill="currentColor" stroke="none"></circle>
-      </svg>
-    </a>
   </div>
 </section>
 
