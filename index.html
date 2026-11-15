@@ -3,99 +3,172 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>One Print</title>
+<title>Kentaro Tsuji</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap">
 <style>
-  /* Layout: one print at a time; turning it curls the paper around a cylinder, like a page. */
+  /* Layout: one framed print, centered; each new photo develops in place like a print in the tray. */
   :root {
     --bg: #e8e6e1;
     --frame: #ffffff;
-    --paper-back: #f3f1ec;
-    --ink: #6b6862;
+    --ink: #2c2b28;
+    --muted: #7a766f;
+    --rule: #cfccc5;
     --shadow: 30, 26, 20;
+    --sans: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     --pad: clamp(12px, 2.4vmin, 28px);   /* white frame width */
     --gutter: clamp(28px, 8vmin, 88px);  /* space around the print */
+    --head: 64px;
   }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #1d1c1a; --ink: #8c8880; --paper-back: #e9e6e0; --shadow: 0, 0, 0; color-scheme: dark } }
-  :root[data-theme="dark"] { --bg: #1d1c1a; --ink: #8c8880; --paper-back: #e9e6e0; --shadow: 0, 0, 0; color-scheme: dark }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #1d1c1a; --ink: #e6e3dd; --muted: #8c8880; --rule: #3a3834; --shadow: 0, 0, 0; color-scheme: dark } }
+  :root[data-theme="dark"] {
+    --bg: #1d1c1a; --ink: #e6e3dd; --muted: #8c8880; --rule: #3a3834; --shadow: 0, 0, 0; color-scheme: dark }
 
-  * { box-sizing: border-box; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
   body {
     background: var(--bg);
     color: var(--ink);
-    font: 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
-    letter-spacing: .12em;
+    font: 400 12px/1.5 var(--sans);
     overflow: hidden;
-    -webkit-user-select: none; user-select: none;
     -webkit-tap-highlight-color: transparent;
   }
+  a { color: inherit; text-decoration: none; }
+  a:focus-visible { outline: 1px solid var(--ink); outline-offset: 4px; }
+
+  /* ---- header ---- */
+  .head {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    display: flex; justify-content: space-between; align-items: center;
+    height: calc(var(--head) + env(safe-area-inset-top, 0px));
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-left: max(20px, env(safe-area-inset-left, 0px));
+    padding-right: max(20px, env(safe-area-inset-right, 0px));
+    font-size: 11px; font-weight: 500; letter-spacing: .22em;
+  }
+  .head a { padding: 8px 0; }
+  .head .nav { color: var(--muted); transition: color .2s; }
+  .head .nav:hover { color: var(--ink); }
+
+  /* ---- photo stage ---- */
   .stage {
     position: fixed; inset: 0;
     display: grid; place-items: center;
-    padding: var(--gutter) var(--gutter) calc(var(--gutter) + 16px);
-    overflow: hidden;
+    padding: max(var(--gutter), calc(var(--head) + env(safe-area-inset-top, 0px))) var(--gutter) calc(var(--gutter) + 16px);
     touch-action: pan-y;
     cursor: grab;
+    -webkit-user-select: none; user-select: none;
+    transition: opacity .5s ease;
   }
   .stage.dragging { cursor: grabbing; }
-
-  .card {
-    grid-area: 1 / 1;
-    position: relative;
-    perspective: 1800px;
-    opacity: 0;
-    transition: opacity .45s ease;
-  }
-  .sheet {
+  .print {
     background: var(--frame);
     padding: var(--pad);
-    line-height: 0;
-    box-shadow:
-      0 1px 2px rgba(var(--shadow), .08),
-      0 10px 30px -14px rgba(var(--shadow), .28);
+    box-shadow: 0 1px 2px rgba(var(--shadow), .08), 0 12px 34px -14px rgba(var(--shadow), .3);
+    transition: transform .7s cubic-bezier(.2, .8, .2, 1);
+    will-change: transform;
   }
-  .sheet img {
-    display: block;
-    max-width: calc(100vw - 2 * var(--gutter) - 2 * var(--pad));
-    max-height: calc(100dvh - 2 * var(--gutter) - 16px - 2 * var(--pad));
-    width: auto; height: auto;
-    pointer-events: none;
-    -webkit-user-drag: none;
+  .stage.dragging .print { transition: none; }
+  .photo {
+    position: relative; overflow: hidden;
+    width: 300px; height: 200px;
+    background: #f6f5f2;
+    transition: width .9s cubic-bezier(.65, 0, .25, 1), height .9s cubic-bezier(.65, 0, .25, 1);
   }
-  .card.curling > .sheet { visibility: hidden; }
-
-  /* the curling paper: thin vertical strips laid along a cylinder */
-  .curl { position: absolute; inset: 0; transform-style: preserve-3d; pointer-events: none; }
-  .flat-shadow {
-    position: absolute; top: 0; bottom: 0; left: 0;
-    box-shadow: 0 1px 2px rgba(var(--shadow), .08), 0 10px 30px -14px rgba(var(--shadow), .28);
+  .photo img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    pointer-events: none; -webkit-user-drag: none;
+    transition: opacity .6s ease, filter .6s ease;
   }
-  .cast {
-    position: absolute; top: -2%; bottom: -2%; left: 0; width: 90px;
-    background: linear-gradient(to right, rgba(var(--shadow), .32), rgba(var(--shadow), .1) 35%, rgba(var(--shadow), 0));
-    filter: blur(3px);
-    transform-origin: 0 50%;
+  .photo img.on { opacity: 1; }
+  .photo img.out {                       /* the outgoing print washes away under the light */
+    opacity: 0;
+    filter: brightness(1.8) contrast(.6) saturate(.2) sepia(0) blur(4px);
   }
-  .strip { position: absolute; top: 0; left: 0; height: 100%; transform-style: preserve-3d; transform-origin: 0 50%; }
-  .face { position: absolute; inset: 0; overflow: hidden; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-  .face.back { background: var(--paper-back); transform: rotateY(180deg); }
-  .face .sheet { position: absolute; top: 0; box-shadow: none; }
-  .shade, .gloss { position: absolute; inset: 0; opacity: 0; }
-  .shade { background: rgb(var(--shadow)); }
-  .gloss { background: #fff; mix-blend-mode: soft-light; }
-
+  .photo img.dev { animation: develop 1.9s cubic-bezier(.3, .1, .3, 1) both; }
+  @keyframes develop {
+    0%   { opacity: 0; filter: brightness(2.3) contrast(.45) saturate(0) sepia(0) blur(10px); }
+    12%  { opacity: 1; }
+    45%  { opacity: 1; filter: brightness(1.35) contrast(.8) saturate(.35) sepia(.3) blur(2px); }
+    100% { opacity: 1; filter: brightness(1) contrast(1) saturate(1) sepia(0) blur(0); }
+  }
   .count {
     position: fixed; left: 0; right: 0;
-    bottom: max(calc(var(--gutter) / 2 - 4px), env(safe-area-inset-bottom));
+    bottom: max(calc(var(--gutter) / 2 - 4px), env(safe-area-inset-bottom, 0px));
     text-align: center; pointer-events: none;
+    font: 11px/1 var(--mono); letter-spacing: .12em; color: var(--muted);
     font-variant-numeric: tabular-nums;
+    transition: opacity .5s ease;
   }
-  @media (prefers-reduced-motion: reduce) { .card { transition: none; } }
+
+  /* ---- CV ---- */
+  .cv {
+    position: fixed; inset: 0; z-index: 5;
+    overflow-y: auto;
+    padding-top: calc(var(--head) + env(safe-area-inset-top, 0px) + clamp(48px, 14vh, 140px));
+    padding-bottom: 80px;
+    padding-left: max(20px, env(safe-area-inset-left, 0px));
+    padding-right: max(20px, env(safe-area-inset-right, 0px));
+    background: var(--bg);
+    opacity: 0; visibility: hidden;
+    transition: opacity .5s ease, visibility 0s linear .5s;
+  }
+  .cv-inner { max-width: 620px; margin: 0 auto; }
+  .cv h1 { font-size: 13px; font-weight: 500; letter-spacing: .22em; }
+  .cv .role { margin-top: 10px; color: var(--muted); font-size: 13px; letter-spacing: .02em; }
+  .cv ol { list-style: none; margin-top: 56px; border-top: 1px solid var(--rule); }
+  .cv li {
+    display: grid; grid-template-columns: 4.5em 1fr; gap: 16px;
+    padding: 16px 0; border-bottom: 1px solid var(--rule);
+    font-size: 13px; line-height: 1.6;
+  }
+  .cv li > * { min-width: 0; }
+  .cv .yr { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 1px; }
+  .cv li, .cv h1, .cv .role { opacity: 0; transform: translateY(6px); transition: opacity .6s ease, transform .6s ease; }
+
+  body.on-cv .cv { opacity: 1; visibility: visible; transition: opacity .5s ease; }
+  body.on-cv .cv li, body.on-cv .cv h1, body.on-cv .cv .role { opacity: 1; transform: none; }
+  body.on-cv .cv h1 { transition-delay: .1s; }
+  body.on-cv .cv .role { transition-delay: .18s; }
+  body.on-cv .cv li:nth-child(1) { transition-delay: .26s; }
+  body.on-cv .cv li:nth-child(2) { transition-delay: .32s; }
+  body.on-cv .cv li:nth-child(3) { transition-delay: .38s; }
+  body.on-cv .stage, body.on-cv .count { opacity: 0; pointer-events: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .photo, .print, .photo img { transition: none; }
+    .photo img.dev { animation-duration: .01s; }
+  }
 </style>
 </head>
 <body>
-<main class="stage" id="stage" aria-roledescription="carousel"></main>
+<header class="head">
+  <a href="#" class="name">KENTARO TSUJI</a>
+  <a href="#cv" class="nav" id="nav">CV</a>
+</header>
+
+<main class="stage" id="stage" aria-roledescription="carousel" aria-label="Photographs">
+  <figure class="print" id="print"><div class="photo" id="photo"></div></figure>
+</main>
 <div class="count" id="count" aria-live="polite"></div>
+
+<section class="cv" id="cv" aria-label="CV">
+  <div class="cv-inner">
+    <h1>KENTARO TSUJI</h1>
+    <p class="role">iPhone 1 Photographer</p>
+    <ol>
+      <li><span class="yr">1996</span><span>Born in Saga, Japan</span></li>
+      <li><span class="yr">2021</span><span>M.Eng. in Systems and Control Engineering, Tokyo Institute of Technology</span></li>
+      <li><span class="yr">2021</span><span>Joined Dentsu</span></li>
+    </ol>
+  </div>
+</section>
 
 <script>
   // Placeholder photos from Unsplash (swap these for your own images).
@@ -112,259 +185,139 @@
   const src = id => `https://images.unsplash.com/photo-${id}?auto=format&fit=max&w=2000&q=80`;
 
   const stage = document.getElementById('stage');
+  const print = document.getElementById('print');
+  const photo = document.getElementById('photo');
   const count = document.getElementById('count');
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const K = reduced ? 900 : 95;     // spring stiffness for the turn
-  const D = reduced ? 60 : 17.5;    // damping (just under critical: the paper settles without bouncing)
-  const KF = reduced ? 900 : 24;    // the flight away is looser: a toss, not a snap
-  const DF = reduced ? 60 : 9;
-  const PI = Math.PI;
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-  const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 
-  // ---- cards: t = how far the page is turned (0 flat, 1 turned away) --------
+  // ---- prints ----------------------------------------------------------------
   let index = 0;
-  const cards = photos.map((id, i) => {
-    const el = document.createElement('div');
-    el.className = 'card';
-    const sheet = document.createElement('figure');
-    sheet.className = 'sheet';
+  let imgs = photos.map(id => {
     const img = new Image();
     img.alt = '';
     img.decoding = 'async';
-    sheet.appendChild(img);
-    el.appendChild(sheet);
-    stage.appendChild(el);
-    const c = { el, sheet, img, i, t: 0, vt: 0, tt: 0, f: 0, vf: 0, tf: 0,
-                held: false, loaded: false, curl: null, fx: -900, fy: -300, fr: -24 };
-    img.onload = () => { c.loaded = true; draw(c); };
-    img.onerror = () => { el.remove(); cards.splice(cards.indexOf(c), 1); cards.forEach((k, j) => k.i = j);
-                          index = clamp(index, 0, cards.length - 1); retarget(); };
     img.src = src(id);
-    return c;
+    img.addEventListener('animationend', () => img.classList.remove('dev'));
+    img.onload = () => { if (img === imgs[index]) fit(); };
+    img.onerror = () => {
+      const was = imgs[index];
+      img.remove(); imgs = imgs.filter(i => i !== img);
+      index = Math.max(0, imgs.indexOf(was)); show(index, true);
+    };
+    photo.appendChild(img);
+    return img;
   });
 
-  // A turned page keeps a little of its curl and flies off on a random diagonal.
-  const KEEP = 0.12;
-  function aim(c) {
-    const up = Math.random() < 0.5;
-    const deg = (up ? 200 : 115) + Math.random() * 45;          // up-left or down-left, never flat
-    const a = deg * PI / 180;
-    const dist = Math.hypot(innerWidth, innerHeight) * 0.5 + Math.hypot(c.sheet.offsetWidth, c.sheet.offsetHeight) * 0.55;
-    c.fx = Math.cos(a) * dist; c.fy = Math.sin(a) * dist;
-    c.fr = (up ? -1 : 1) * (14 + Math.random() * 26) * (Math.random() < 0.2 ? -1 : 1);
-  }
-  function retarget() {
-    for (const c of cards) if (!c.held) { c.tt = c.i < index ? KEEP : 0; c.tf = c.i < index ? 1 : 0; }
-    count.textContent = `${String(index + 1).padStart(2, '0')} / ${String(cards.length).padStart(2, '0')}`;
-    wake();
+  // size the window of the frame to the photo's own proportions
+  function fit() {
+    const img = imgs[index];
+    if (!img || !img.naturalWidth) return;
+    const cs = getComputedStyle(stage), pr = getComputedStyle(print);
+    const pad = parseFloat(pr.paddingLeft) * 2;
+    const maxW = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - pad;
+    const maxH = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - pad;
+    const s = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight);
+    photo.style.width = Math.round(img.naturalWidth * s) + 'px';
+    photo.style.height = Math.round(img.naturalHeight * s) + 'px';
   }
 
-  // ---- the curl -------------------------------------------------------------
-  function buildCurl(c) {
-    const W = c.sheet.offsetWidth, H = c.sheet.offsetHeight;
-    const n = clamp(Math.round(W / 9), 24, 72);
-    const w = W / n;
-    const curl = document.createElement('div');
-    curl.className = 'curl';
-    const flat = document.createElement('div'); flat.className = 'flat-shadow';
-    const cast = document.createElement('div'); cast.className = 'cast';
-    curl.append(cast, flat);
-    const strips = [];
-    for (let k = 0; k < n; k++) {
-      const s = document.createElement('div');
-      s.className = 'strip';
-      s.style.width = (w + 1.2) + 'px';                 // a hair of overlap hides seams
-      const front = document.createElement('div'); front.className = 'face';
-      const copy = c.sheet.cloneNode(true);
-      copy.style.left = (-k * w) + 'px';
-      copy.style.width = W + 'px'; copy.style.height = H + 'px';
-      const fs = document.createElement('div'); fs.className = 'shade';
-      const fg = document.createElement('div'); fg.className = 'gloss';
-      front.append(copy, fs, fg);
-      const back = document.createElement('div'); back.className = 'face back';
-      const bs = document.createElement('div'); bs.className = 'shade';
-      back.append(bs);
-      s.append(front, back);
-      curl.appendChild(s);
-      strips.push({ s, fs, fg, bs, u0: k * w });
+  function show(i, instant) {
+    const prev = imgs[index];
+    index = clamp(i, 0, imgs.length - 1);
+    const next = imgs[index];
+    for (const img of imgs) if (img !== prev && img !== next) img.classList.remove('on', 'out', 'dev');
+    if (prev && prev !== next) {
+      prev.style.filter = '';
+      prev.classList.remove('on', 'dev');
+      prev.classList.add('out');
     }
-    c.el.appendChild(curl);
-    c.el.classList.add('curling');
-    c.curl = { curl, strips, flat, cast, W, H, w };
+    next.classList.remove('out');
+    next.style.filter = '';
+    if (!instant) { next.classList.remove('dev'); void next.offsetWidth; next.classList.add('dev'); }
+    next.classList.add('on');
+    fit();
+    count.textContent = `${String(index + 1).padStart(2, '0')} / ${String(imgs.length).padStart(2, '0')}`;
   }
-  function dropCurl(c) {
-    if (!c.curl) return;
-    c.curl.curl.remove(); c.curl = null;
-    c.el.classList.remove('curling');
+  function go(i) {
+    if (i < 0 || i >= imgs.length || i === index) { nudge(i < index ? 1 : -1); return; }
+    show(i);
   }
-
-  function renderCurl(c) {
-    const { strips, flat, cast, W } = c.curl;
-    const t = clamp(c.t, -0.02, 1);
-    // the paper loosens in the middle of the turn and tightens at the ends
-    const Rb = clamp(W * 0.065, 14, 42);
-    const R = Rb * (0.4 + 0.6 * smooth(0, 0.1, t)) * (1 + 0.3 * Math.sin(PI * clamp(t, 0, 1)));
-    const fold = W - t * (W + PI * R);                   // where the paper leaves the wall
-    for (const p of strips) {
-      const u = p.u0 - fold;
-      let x, z, a;
-      if (u <= 0)            { x = p.u0; z = 0; a = 0; }
-      else if (u <= PI * R)  { a = u / R; x = fold + R * Math.sin(a); z = R * (1 - Math.cos(a)); }
-      else                   { a = PI; x = fold - (u - PI * R); z = 2 * R; }
-      p.s.style.transform = `translate3d(${x}px,0,${z}px) rotateY(${-a}rad)`;
-      // light from the front: darker as the paper turns away, a soft sheen near the crest
-      p.fs.style.opacity = (0.42 * Math.pow(Math.max(0, 1 - Math.cos(Math.min(a, PI / 2))), 1.4)).toFixed(3);
-      p.fg.style.opacity = (0.75 * Math.exp(-Math.pow((a - 0.55) / 0.32, 2))).toFixed(3);
-      p.bs.style.opacity = (0.06 + 0.4 * Math.max(0, 1 + Math.cos(a)) ** 1.6).toFixed(3);
-    }
-    const edge = Math.max(0, fold) + (fold < W ? R : 0);  // rightmost point of the lifted paper
-    flat.style.width = Math.max(0, Math.min(fold, W)) + 'px';
-    cast.style.transform = `translateX(${Math.min(edge, W)}px) scaleX(${(0.4 + R / Rb * 0.6).toFixed(3)})`;
-    cast.style.opacity = (smooth(0, 0.06, t) * (1 - smooth(0.55, 0.95, t)) * (1 - smooth(0, 0.25, c.f))).toFixed(3);
+  function nudge(dir) {                       // at either end the print only shifts a hair
+    print.style.transform = `translateX(${dir * 10}px)`;
+    setTimeout(() => print.style.transform = '', 140);
   }
 
-  function draw(c) {
-    const d = c.i - index;
-    const turning = c.held || (Math.abs(c.t) > 0.0008 && c.f < 0.999);
-    if (turning && !c.curl && c.loaded) buildCurl(c);
-    if (!turning && c.curl) dropCurl(c);
-    if (c.curl) renderCurl(c);
-    c.el.style.zIndex = 1000 - c.i;
-    // the page underneath shows only while the one above it is being turned
-    const above = cards[cards.indexOf(c) - 1];
-    let op = 0;
-    if (d < 0) op = 1 - smooth(0.7, 1, c.f);
-    else if (d === 0) op = 1;
-    else if (d === 1 && above && (above.t > 0.0008 || above.f > 0.0008 || above.held)) op = 1;
-    c.el.style.opacity = c.loaded ? op : 0;
-    c.el.style.visibility = op > 0 || d === 0 ? 'visible' : 'hidden';
-    const f = c.f;
-    c.el.style.transform = f > 0.0005
-      ? `translate3d(${c.fx * f}px,${c.fy * f}px,0) rotate(${c.fr * f}deg) scale(${1 + 0.06 * Math.sin(PI * Math.min(f, 1))})`
-      : '';
-  }
-
-  // ---- physics loop -----------------------------------------------------------
-  let raf = 0, last = 0;
-  function wake() { if (!raf) { last = performance.now(); raf = requestAnimationFrame(tick); } }
-  function tick(now) {
-    const dt = Math.min(1 / 30, (now - last) / 1000); last = now;
-    let moving = false;
-    for (const c of cards) {
-      if (!c.held) {
-        c.vt += (-K * (c.t - c.tt) - D * c.vt) * dt;
-        c.t += c.vt * dt;
-        c.vf += (-KF * (c.f - c.tf) - DF * c.vf) * dt;
-        c.f += c.vf * dt;
-        const rest = Math.abs(c.t - c.tt) < 0.0006 && Math.abs(c.vt) < 0.004
-                  && Math.abs(c.f - c.tf) < 0.0006 && Math.abs(c.vf) < 0.004;
-        if (rest) { c.t = c.tt; c.vt = 0; c.f = c.tf; c.vf = 0; }
-        else moving = true;
-      } else moving = true;
-    }
-    cards.forEach(draw);
-    raf = moving ? requestAnimationFrame(tick) : 0;
-  }
-
-  // ---- drag: lift the right edge and turn it, or pull the last page back -------
+  // ---- drag: the print gives a little, and the photo fades under the light ---
   let drag = null;
   stage.addEventListener('pointerdown', e => {
-    if (e.button !== 0 || !cards.length) return;
-    drag = { x0: e.clientX, y0: e.clientY, dx: 0, axis: null, mode: null,
-             hist: [{ x: e.clientX, t: performance.now() }] };
+    if (e.button !== 0 || document.body.classList.contains('on-cv')) return;
+    drag = { x0: e.clientX, y0: e.clientY, dx: 0, axis: null, t0: performance.now() };
     stage.setPointerCapture(e.pointerId);
   });
   stage.addEventListener('pointermove', e => {
     if (!drag) return;
     const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
-    if (!drag.axis && Math.hypot(dx, dy) > 5) drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    if (!drag.axis && Math.hypot(dx, dy) > 6) drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
     if (drag.axis !== 'x') return;
     drag.dx = dx;
-    drag.hist.push({ x: e.clientX, t: performance.now() });
-    if (drag.hist.length > 6) drag.hist.shift();
     stage.classList.add('dragging');
-    hold(dx > 0 && index > 0 ? 'prev' : 'next');
+    const edge = (dx > 0 && index === 0) || (dx < 0 && index === imgs.length - 1);
+    const p = clamp(Math.abs(dx) / (stage.clientWidth * 0.45), 0, 1) * (edge ? 0.25 : 1);
+    const move = Math.sign(dx) * Math.pow(Math.abs(dx), 0.8) * (edge ? 0.25 : 0.45);
+    print.style.transform = `translateX(${move}px) rotate(${move * 0.012}deg)`;
+    const img = imgs[index];
+    img.classList.remove('dev');
+    img.style.filter = `brightness(${1 + p * 0.55}) contrast(${1 - p * 0.3}) saturate(${1 - p * 0.7}) sepia(0) blur(${p * 2.5}px)`;
   });
-
-  const span = c => (c.sheet.offsetWidth || 300) * 1.9;   // drag distance for a whole turn
-  function hold(mode) {
-    if (drag.mode && drag.mode !== mode) letGo(false);
-    drag.mode = mode;
-    const dx = drag.dx;
-    if (mode === 'next') {
-      const c = cards[index]; c.held = true;
-      let t = Math.max(0, -dx) / span(c);
-      if (index === cards.length - 1) t = 0.1 * (1 - Math.exp(-t / 0.1));   // last page: it lifts, then won't go
-      c.t = t;
-    } else {
-      // pull the last page back from wherever it flew, uncurling as it lands
-      const c = cards[index - 1]; c.held = true;
-      const p = clamp(dx / (span(c) * 0.55), 0, 1);
-      c.f = 1 - smooth(0, 1, p);
-      c.t = KEEP * (1 - smooth(0.35, 1, p));
-    }
-    wake();
-  }
-
-  function letGo(commit) {
-    let v = 0;
-    if (drag && drag.hist.length > 1) {
-      const a = drag.hist[0], b = drag.hist[drag.hist.length - 1];
-      v = (b.x - a.x) / Math.max(16, b.t - a.t);          // px per ms
-    }
-    for (const c of cards) {
-      if (!c.held) continue;
-      c.held = false;
-      c.vt = c.i < index ? 0 : -v * 1000 / span(c);
-    }
-    if (commit) {
-      const { mode } = drag;
-      if (mode === 'next' && index < cards.length - 1) {
-        const c = cards[index];
-        if (c.t > 0.22 || v < -0.4) { aim(c); c.vf = clamp(-v * 0.9, 0.5, 1.6); index++; }
-      } else if (mode === 'prev') {
-        const c = cards[index - 1];
-        if (c.f < 0.75 || v > 0.4) { c.vf = -clamp(v * 1.2, 0.4, 2.5); index--; }
-      }
-    }
-    retarget();
-  }
-
   function end(e) {
     if (!drag) return;
     stage.classList.remove('dragging');
-    if (drag.axis === 'x') letGo(true);
-    else if (!drag.axis && e.type === 'pointerup') e.clientX > innerWidth / 3 ? go(index + 1) : go(index - 1);
+    print.style.transform = '';
+    const { dx, axis, t0 } = drag;
     drag = null;
+    if (axis === 'x') {
+      const fast = Math.abs(dx) / (performance.now() - t0) > 0.5 && Math.abs(dx) > 30;
+      if (Math.abs(dx) > stage.clientWidth * 0.18 || fast) {
+        const i = index + (dx < 0 ? 1 : -1);
+        if (i >= 0 && i < imgs.length) { show(i); return; }
+      }
+      imgs[index].style.filter = '';             // not far enough: the photo comes back
+    } else if (!axis && e.type === 'pointerup') {
+      go(index + (e.clientX > innerWidth / 3 ? 1 : -1));
+    }
   }
   stage.addEventListener('pointerup', end);
   stage.addEventListener('pointercancel', end);
 
-  // ---- keyboard, wheel, tap -------------------------------------------------
-  function go(i) {
-    if (i >= cards.length) { cards[index].vt = 0.9; wake(); return; }   // a little lift: no more pages
-    if (i < 0 || i === index) return;
-    if (i > index) { const c = cards[index]; aim(c); c.vt = 1.2; c.vf = 0.6; }
-    else cards[i].vf = -0.8;
-    index = i;
-    retarget();
-  }
+  // ---- keyboard, wheel -------------------------------------------------------
   addEventListener('keydown', e => {
+    if (document.body.classList.contains('on-cv')) { if (e.key === 'Escape') location.hash = ''; return; }
     if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(index + 1); }
     if (e.key === 'ArrowLeft') go(index - 1);
   });
   let wheelLock = false;
   addEventListener('wheel', e => {
+    if (document.body.classList.contains('on-cv')) return;
     const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     if (wheelLock || Math.abs(d) < 20) return;
     wheelLock = true; go(index + (d > 0 ? 1 : -1));
-    setTimeout(() => wheelLock = false, 800);
+    setTimeout(() => wheelLock = false, 900);
   }, { passive: true });
-  addEventListener('resize', () => { cards.forEach(dropCurl); cards.forEach(draw); });
+  addEventListener('resize', fit);
 
-  retarget();
-  cards.forEach(draw);
+  // ---- CV view (#cv) ---------------------------------------------------------
+  const nav = document.getElementById('nav');
+  function route() {
+    const cv = location.hash === '#cv';
+    document.body.classList.toggle('on-cv', cv);
+    nav.textContent = cv ? 'CLOSE' : 'CV';
+    nav.setAttribute('href', cv ? '#' : '#cv');
+  }
+  addEventListener('hashchange', route);
+  route();
+
+  show(0, true);
+  imgs[0].classList.add('dev');
 </script>
 </body>
 </html>
