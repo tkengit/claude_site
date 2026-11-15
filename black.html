@@ -59,7 +59,7 @@
     display: grid; place-items: center;
     padding: max(var(--gutter), calc(var(--head) + env(safe-area-inset-top, 0px))) var(--gutter) calc(var(--gutter) + 16px);
     overflow: hidden;
-    touch-action: pan-y;
+    touch-action: none;                          /* both directions belong to the photos */
     cursor: grab;
     -webkit-user-select: none; user-select: none;
     transition: opacity .5s ease;
@@ -369,14 +369,18 @@
     const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
     if (!drag.axis && Math.hypot(dx, dy) > 5) {
       drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-      if (drag.axis === 'x') { drag.x0 = e.clientX; drag.p0 = pos; from = Math.round(pos); ghost = null; }
+      // either axis turns the photos: left or up for the next one, right or down for the one before
+      drag.c0 = drag.axis === 'x' ? e.clientX : e.clientY;
+      drag.hist = [{ x: drag.c0, t: performance.now() }];
+      drag.p0 = pos; from = Math.round(pos); ghost = null;
     }
-    if (drag.axis !== 'x') return;
+    if (!drag.axis) return;
+    const c = drag.axis === 'x' ? e.clientX : e.clientY;
     holding = true; vel = 0;
     stage.classList.add('dragging');
-    drag.hist.push({ x: e.clientX, t: performance.now() });
+    drag.hist.push({ x: c, t: performance.now() });
     if (drag.hist.length > 5) drag.hist.shift();
-    let p = drag.p0 - (e.clientX - drag.x0) / S;
+    let p = drag.p0 - (c - drag.c0) / S;
     const hi = prints.length - 1;                // past either end the rail goes stiff
     if (p < 0) p = -rubber(-p);
     if (p > hi) p = hi + rubber(p - hi);
@@ -390,10 +394,10 @@
     stage.classList.remove('dragging');
     const { axis, hist, p0 } = drag;
     drag = null;
-    if (axis === 'x') {
+    if (axis) {
       holding = false;
       const a = hist[0], b = hist[hist.length - 1];
-      const v = (b.x - a.x) / Math.max(12, b.t - a.t);        // px per ms, + = finger moving right
+      const v = (b.x - a.x) / Math.max(12, b.t - a.t);        // px per ms along the swipe, + = right or down
       vel = -v * 1000 / S;                                   // hand the finger's speed to the spring
       const from = Math.round(p0);
       const projected = pos + vel * 0.16;                    // where the flick would carry it
