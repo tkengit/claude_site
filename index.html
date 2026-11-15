@@ -5,22 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Kentaro Tsuji</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap">
 <style>
-  /* Layout: one framed print, centered; changing photos closes and reopens a camera iris over it. */
+  /* Layout: one framed print at a time on a horizontal rail; the finger moves the rail directly. */
   :root {
     --bg: #e8e6e1;
     --frame: #ffffff;
     --ink: #2c2b28;
     --muted: #7a766f;
     --faint: #aaa69f;
-    --blade: 36, 35, 32;
     --rule: #cfccc5;
     --shadow: 30, 26, 20;
-    --sans: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
-    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
     --pad: clamp(12px, 2.4vmin, 28px);   /* white frame width */
     --gutter: clamp(28px, 8vmin, 88px);  /* space around the print */
     --head: 64px;
@@ -37,6 +32,7 @@
     color: var(--ink);
     font: 400 12px/1.5 var(--sans);
     overflow: hidden;
+    -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
   }
   a { color: inherit; text-decoration: none; }
@@ -50,17 +46,18 @@
     padding-top: env(safe-area-inset-top, 0px);
     padding-left: max(20px, env(safe-area-inset-left, 0px));
     padding-right: max(20px, env(safe-area-inset-right, 0px));
-    font-size: 11px; font-weight: 500; letter-spacing: .22em;
+    font-size: 11px; font-weight: 500; letter-spacing: .2em;
     color: var(--faint);
   }
   .head a { padding: 8px 0; transition: color .2s; }
   .head a:hover { color: var(--muted); }
 
-  /* ---- photo stage ---- */
+  /* ---- photo rail ---- */
   .stage {
     position: fixed; inset: 0;
     display: grid; place-items: center;
     padding: max(var(--gutter), calc(var(--head) + env(safe-area-inset-top, 0px))) var(--gutter) calc(var(--gutter) + 16px);
+    overflow: hidden;
     touch-action: pan-y;
     cursor: grab;
     -webkit-user-select: none; user-select: none;
@@ -68,40 +65,30 @@
   }
   .stage.dragging { cursor: grabbing; }
   .print {
+    grid-area: 1 / 1;
     background: var(--frame);
     padding: var(--pad);
+    line-height: 0;
     box-shadow: 0 1px 2px rgba(var(--shadow), .08), 0 12px 34px -14px rgba(var(--shadow), .3);
-    transition: transform .7s cubic-bezier(.2, .8, .2, 1);
     will-change: transform;
+    opacity: 0;
+    transition: opacity .6s ease;
   }
-  .stage.dragging .print { transition: none; }
-  .photo {
-    position: relative; overflow: hidden;
-    width: 300px; height: 200px;
-    background: #f6f5f2;
-    transition: width .9s cubic-bezier(.65, 0, .25, 1), height .9s cubic-bezier(.65, 0, .25, 1);
-  }
-  .photo img {
-    position: absolute; inset: 0; width: 100%; height: 100%;
-    object-fit: cover;
-    visibility: hidden;
+  .print.ready { opacity: 1; }
+  .window { overflow: hidden; }
+  .window img {
+    display: block;
+    max-width: calc(100vw - 2 * var(--gutter) - 2 * var(--pad));
+    max-height: calc(100dvh - max(var(--gutter), calc(var(--head) + env(safe-area-inset-top, 0px))) - var(--gutter) - 16px - 2 * var(--pad));
+    width: auto; height: auto;
+    will-change: transform;
     pointer-events: none; -webkit-user-drag: none;
   }
-  .photo img.on { visibility: visible; }
-  .photo.shut { background: rgb(var(--blade)); }
-  .photo.shut img { visibility: hidden; }
-  .iris { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-  .flash {
-    position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none;
-    mix-blend-mode: soft-light;
-  }
-  .flash.go { animation: flash .7s ease-out; }
-  @keyframes flash { 0% { opacity: .9; } 100% { opacity: 0; } }
   .count {
     position: fixed; left: 0; right: 0;
     bottom: max(calc(var(--gutter) / 2 - 4px), env(safe-area-inset-bottom, 0px));
     text-align: center; pointer-events: none;
-    font: 11px/1 var(--mono); letter-spacing: .12em; color: var(--muted);
+    font-size: 11px; letter-spacing: .14em; color: var(--faint);
     font-variant-numeric: tabular-nums;
     transition: opacity .5s ease;
   }
@@ -119,7 +106,7 @@
     transition: opacity .5s ease, visibility 0s linear .5s;
   }
   .cv-inner { max-width: 620px; margin: 0 auto; }
-  .cv h1 { font-size: 13px; font-weight: 500; letter-spacing: .22em; }
+  .cv h1 { font-size: 13px; font-weight: 500; letter-spacing: .2em; }
   .cv .role { margin-top: 10px; color: var(--muted); font-size: 13px; letter-spacing: .02em; }
   .cv ol { list-style: none; margin-top: 56px; border-top: 1px solid var(--rule); }
   .cv li {
@@ -128,7 +115,7 @@
     font-size: 13px; line-height: 1.6;
   }
   .cv li > * { min-width: 0; }
-  .cv .yr { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 1px; }
+  .cv .yr { color: var(--muted); font-variant-numeric: tabular-nums; }
   .cv li, .cv h1, .cv .role { opacity: 0; transform: translateY(6px); transition: opacity .6s ease, transform .6s ease; }
 
   body.on-cv .cv { opacity: 1; visibility: visible; transition: opacity .5s ease; }
@@ -139,11 +126,6 @@
   body.on-cv .cv li:nth-child(2) { transition-delay: .32s; }
   body.on-cv .cv li:nth-child(3) { transition-delay: .38s; }
   body.on-cv .stage, body.on-cv .count { opacity: 0; pointer-events: none; }
-
-  @media (prefers-reduced-motion: reduce) {
-    .photo, .print { transition: none; }
-    .flash.go { animation: none; }
-  }
 </style>
 </head>
 <body>
@@ -152,9 +134,7 @@
   <a href="#cv" class="nav" id="nav">CV</a>
 </header>
 
-<main class="stage" id="stage" aria-roledescription="carousel" aria-label="Photographs">
-  <figure class="print" id="print"><div class="photo" id="photo"><canvas class="iris" id="iris"></canvas><div class="flash" id="flash"></div></div></figure>
-</main>
+<main class="stage" id="stage" aria-roledescription="carousel" aria-label="Photographs"></main>
 <div class="count" id="count" aria-live="polite"></div>
 
 <section class="cv" id="cv" aria-label="CV">
@@ -184,198 +164,126 @@
   const src = id => `https://images.unsplash.com/photo-${id}?auto=format&fit=max&w=2000&q=80`;
 
   const stage = document.getElementById('stage');
-  const print = document.getElementById('print');
-  const photo = document.getElementById('photo');
   const count = document.getElementById('count');
-  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-
-  const iris = document.getElementById('iris');
-  const flash = document.getElementById('flash');
-  const ctx = iris.getContext('2d');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const onCV = () => document.body.classList.contains('on-cv');
 
   // ---- prints ----------------------------------------------------------------
-  let index = 0;
-  let imgs = photos.map(id => {
+  let prints = photos.map(id => {
+    const el = document.createElement('figure');
+    el.className = 'print';
+    const win = document.createElement('div');
+    win.className = 'window';
     const img = new Image();
     img.alt = '';
     img.decoding = 'async';
+    win.appendChild(img);
+    el.appendChild(win);
+    stage.appendChild(el);
+    const p = { el, img, w: 0 };
+    img.onload = () => { el.classList.add('ready'); measure(); };
+    img.onerror = () => { el.remove(); prints = prints.filter(q => q !== p); index = clamp(index, 0, prints.length - 1); pos = index; measure(); };
     img.src = src(id);
-    img.onload = () => { if (img === imgs[index]) fit(); };
-    img.onerror = () => {
-      const was = imgs[index];
-      img.remove(); imgs = imgs.filter(i => i !== img);
-      index = Math.max(0, imgs.indexOf(was)); swap(index);
-    };
-    photo.insertBefore(img, iris);
-    return img;
+    return p;
   });
 
-  // size the window of the frame to the photo's own proportions
-  function fit() {
-    const img = imgs[index];
-    if (!img || !img.naturalWidth) return;
-    const cs = getComputedStyle(stage), pr = getComputedStyle(print);
-    const pad = parseFloat(pr.paddingLeft) * 2;
-    const maxW = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - pad;
-    const maxH = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - pad;
-    const s = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight);
-    photo.style.width = Math.round(img.naturalWidth * s) + 'px';
-    photo.style.height = Math.round(img.naturalHeight * s) + 'px';
-  }
-  function swap(i) {
-    index = clamp(i, 0, imgs.length - 1);
-    imgs.forEach((img, k) => img.classList.toggle('on', k === index));
-    fit();
-    count.textContent = `${String(index + 1).padStart(2, '0')} / ${String(imgs.length).padStart(2, '0')}`;
+  // ---- motion state: pos is a continuous "which photo" (1.5 = halfway from 2nd to 3rd)
+  let index = 0, pos = 0, vel = 0, target = 0;
+  let S = 600;                                   // px between neighbouring prints
+  function measure() {
+    let maxW = 0;
+    for (const p of prints) { p.w = p.el.offsetWidth; maxW = Math.max(maxW, p.w); }
+    S = stage.clientWidth / 2 + maxW / 2 + 48;   // a neighbour waits just off screen
+    count.textContent = `${String(index + 1).padStart(2, '0')} / ${String(prints.length).padStart(2, '0')}`;
+    render();
   }
 
-  // ---- the iris: seven blades turning in around a shrinking heptagon ---------
-  const BLADES = 7;
-  let p = 0, vp = 0, tp = 0, spin = 1;   // p: 0 open .. 1 shut
-  let K = 260, D = 26;
-  let pending = null;                    // photo to load once the iris is shut
-
-  function drawIris() {
-    const dpr = Math.min(2, devicePixelRatio || 1);
-    const w = photo.clientWidth, h = photo.clientHeight;
-    if (iris.width !== Math.round(w * dpr) || iris.height !== Math.round(h * dpr)) {
-      iris.width = Math.round(w * dpr); iris.height = Math.round(h * dpr);
-    }
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
-    const q = clamp(p, 0, 1.02);
-    if (q <= 0.002) return;
-    const cx = w / 2, cy = h / 2;
-    const rOpen = Math.hypot(w, h) / 2 / Math.cos(PI / BLADES) + 2;
-    const r = rOpen * (1 - q);
-    const rot = spin * q * 1.25 - PI / 2;
-    const V = [];
-    for (let k = 0; k < BLADES; k++) {
-      const a = rot + k * 2 * PI / BLADES;
-      V.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
-    }
-    const F = Math.hypot(w, h) * 2;
-    for (let k = 0; k < BLADES; k++) {
-      const A = V[k], B = V[(k + 1) % BLADES], C = V[(k + 2) % BLADES];
-      const d0 = side(rot, k), d1 = side(rot, k + 1);   // directions of sides k and k+1 (valid even when shut)
-      // blade: the side B→C, then out along both extensions
-      ctx.beginPath();
-      ctx.moveTo(B[0], B[1]);
-      ctx.lineTo(C[0], C[1]);
-      ctx.lineTo(C[0] + d1[0] * F, C[1] + d1[1] * F);
-      ctx.lineTo(B[0] + d0[0] * F, B[1] + d0[1] * F);
-      ctx.closePath();
-      const mx = (B[0] + C[0]) / 2, my = (B[1] + C[1]) / 2;
-      const g = ctx.createLinearGradient(mx, my, mx + (mx - cx) * 1.2, my + (my - cy) * 1.2);
-      const lift = 0.07 + 0.05 * Math.sin(k * 2.3);    // each blade catches the light a little differently
-      g.addColorStop(0, `rgba(${tone(lift)}, 1)`);
-      g.addColorStop(1, `rgba(${bladeRGB()}, 1)`);
-      ctx.fillStyle = g;
-      ctx.fill();
-      // the blade's leading edge
-      ctx.beginPath();
-      ctx.moveTo(B[0], B[1]);
-      ctx.lineTo(B[0] + d0[0] * F, B[1] + d0[1] * F);
-      ctx.strokeStyle = 'rgba(255,255,255,.09)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
-    // soft vignette at the opening, like light falling off the blades
-    if (r > 1) {
-      const v = ctx.createRadialGradient(cx, cy, r * 0.55, cx, cy, r * 1.05);
-      v.addColorStop(0, 'rgba(0,0,0,0)');
-      v.addColorStop(1, `rgba(0,0,0,${0.35 * q})`);
-      ctx.fillStyle = v;
-      ctx.beginPath(); V.forEach(([x, y], k) => k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath();
-      ctx.fill();
-    }
+  function render() {
+    prints.forEach((p, i) => {
+      const d = i - pos;                         // -1 .. 0 .. 1 around the current print
+      const a = Math.abs(d);
+      if (a > 1.6) { p.el.style.visibility = 'hidden'; return; }
+      p.el.style.visibility = 'visible';
+      const x = d * S;
+      const s = 1 - 0.035 * Math.min(a, 1);      // prints ease back a touch as they leave
+      p.el.style.transform = `translate3d(${x}px,0,0) scale(${s})`;
+      // parallax: the photo drifts a little slower than its frame, so it feels set behind glass
+      const zoom = 1 + 0.08 * Math.min(a, 1);
+      const room = (p.w * (zoom - 1)) / 2;
+      const shift = -Math.sign(d) * Math.min(a * S * 0.05, room);
+      p.img.style.transform = `translate3d(${shift}px,0,0) scale(${zoom})`;
+    });
   }
-  const PI = Math.PI;
-  const side = (rot, k) => { const t = rot + (2 * k + 1) * PI / BLADES + PI / 2; return [Math.cos(t), Math.sin(t)]; };
-  let bladeCache = null;
-  function bladeRGB() { return bladeCache || (bladeCache = getComputedStyle(document.documentElement).getPropertyValue('--blade').trim() || '36, 35, 32'); }
-  function tone(l) { return bladeRGB().split(',').map(n => Math.round(+n + 255 * l)).join(','); }
 
-  let raf = 0, last = 0, held = false;
+  // ---- spring ------------------------------------------------------------------
+  const K = reduced ? 900 : 180, D = reduced ? 60 : 25;   // just under critical: settles with no bounce you can see
+  let raf = 0, last = 0, holding = false;
   function wake() { if (!raf) { last = performance.now(); raf = requestAnimationFrame(tick); } }
   function tick(now) {
     const dt = Math.min(1 / 30, (now - last) / 1000); last = now;
-    if (!held) {
-      vp += (-K * (p - tp) - D * vp) * dt;
-      p += vp * dt;
-      if (pending !== null && p >= 0.985) shut();
+    if (!holding) {
+      vel += (-K * (pos - target) - D * vel) * dt;
+      pos += vel * dt;
+      if (Math.abs(pos - target) < 0.0004 && Math.abs(vel) < 0.002) { pos = target; vel = 0; render(); raf = 0; return; }
     }
-    drawIris();
-    const settled = !held && pending === null && Math.abs(p - tp) < 0.001 && Math.abs(vp) < 0.01;
-    if (settled) { p = tp; vp = 0; drawIris(); raf = 0; return; }
+    render();
     raf = requestAnimationFrame(tick);
   }
-
-  function close(i, dir, v0 = 0) {               // shutter: snap shut, change the film, reopen
-    if (reduced) { swap(i); return; }
-    pending = i; spin = dir;
-    K = 520; D = 34; tp = 1.03; vp = Math.max(vp, v0);
+  function go(i, kick = 0) {
+    if (i < 0 || i >= prints.length) kick += (i < 0 ? -1 : 1) * 0.9;   // the end of the rail: a soft bump
+    index = clamp(i, 0, prints.length - 1);
+    target = index;
+    vel += kick;
+    count.textContent = `${String(index + 1).padStart(2, '0')} / ${String(prints.length).padStart(2, '0')}`;
     wake();
   }
-  function shut() {
-    const i = pending; pending = null;
-    p = 1; vp = 0;
-    photo.classList.add('shut');               // fully dark while the film changes
-    swap(i);
-    print.style.transform = 'scale(.992)';
-    setTimeout(() => {                              // reopen with a little spring in the blades
-      print.style.transform = '';
-      photo.classList.remove('shut');
-      K = 150; D = 15; tp = 0; vp = -0.6;
-      flash.classList.remove('go'); void flash.offsetWidth; flash.classList.add('go');
-      wake();
-    }, 260);
-  }
-  function go(i) {
-    if (pending !== null) return;
-    if (i < 0 || i >= imgs.length || i === index) {   // nothing more: the blades flinch and reopen
-      spin = i < index ? -1 : 1; K = 300; D = 22; tp = 0; vp = 2.2; wake(); return;
-    }
-    close(i, i > index ? 1 : -1, 2);
-  }
 
-  // ---- drag: your finger turns the iris shut ----------------------------------
+  // ---- drag: 1:1 with the finger, then the flick carries on into the spring --------
   let drag = null;
   stage.addEventListener('pointerdown', e => {
-    if (e.button !== 0 || document.body.classList.contains('on-cv') || pending !== null) return;
-    drag = { x0: e.clientX, y0: e.clientY, dx: 0, axis: null, hist: [{ x: e.clientX, t: performance.now() }] };
+    if (e.button !== 0 || onCV()) return;
+    drag = { x0: e.clientX, y0: e.clientY, axis: null, p0: pos, hist: [{ x: e.clientX, t: performance.now() }] };
     stage.setPointerCapture(e.pointerId);
   });
   stage.addEventListener('pointermove', e => {
     if (!drag) return;
     const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
-    if (!drag.axis && Math.hypot(dx, dy) > 6) drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    if (!drag.axis && Math.hypot(dx, dy) > 5) {
+      drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+      if (drag.axis === 'x') { drag.x0 = e.clientX; drag.p0 = pos; }   // pick the rail up where it is, no jump
+    }
     if (drag.axis !== 'x') return;
-    drag.dx = dx;
-    drag.hist.push({ x: e.clientX, t: performance.now() });
-    if (drag.hist.length > 6) drag.hist.shift();
+    holding = true; vel = 0;
     stage.classList.add('dragging');
-    const edge = (dx > 0 && index === 0) || (dx < 0 && index === imgs.length - 1);
-    let q = Math.abs(dx) / (Math.min(stage.clientWidth, 900) * 0.42);
-    q = edge ? 0.22 * (1 - Math.exp(-q / 0.22)) : 0.92 * (1 - Math.exp(-q / 0.75));
-    held = true; spin = dx < 0 ? 1 : -1; p = q; vp = 0;
+    drag.hist.push({ x: e.clientX, t: performance.now() });
+    if (drag.hist.length > 5) drag.hist.shift();
+    let p = drag.p0 - (e.clientX - drag.x0) / S;
+    const lo = 0, hi = prints.length - 1;          // past either end the rail goes stiff
+    if (p < lo) p = lo - rubber(lo - p);
+    if (p > hi) p = hi + rubber(p - hi);
+    pos = p;
     wake();
   });
+  const rubber = o => 0.18 * (1 - Math.exp(-o / 0.18 * 0.55));
+
   function end(e) {
     if (!drag) return;
     stage.classList.remove('dragging');
-    const { dx, axis, hist } = drag;
+    const { axis, hist, p0 } = drag;
     drag = null;
     if (axis === 'x') {
-      held = false;
+      holding = false;
       const a = hist[0], b = hist[hist.length - 1];
-      const v = Math.abs((b.x - a.x) / Math.max(16, b.t - a.t));
-      const i = index + (dx < 0 ? 1 : -1);
-      if ((p > 0.45 || v > 0.45) && i >= 0 && i < imgs.length) { close(i, dx < 0 ? 1 : -1, 1 + v * 3); return; }
-      K = 200; D = 20; tp = 0; wake();               // let go early: the blades spring back open
+      const v = (b.x - a.x) / Math.max(12, b.t - a.t);        // px per ms, + = finger moving right
+      vel = -v * 1000 / S;                                   // hand the finger's speed to the spring
+      const from = Math.round(p0);
+      const projected = pos + vel * 0.16;                    // where the flick would carry it
+      let i = Math.round(projected);
+      i = clamp(i, from - 1, from + 1);                      // one photo per flick, never a skid
+      go(i);
     } else if (!axis && e.type === 'pointerup') {
-      go(index + (e.clientX > innerWidth / 3 ? 1 : -1));
+      go(index + (e.clientX > innerWidth / 3 ? 1 : -1), 0);
     }
   }
   stage.addEventListener('pointerup', end);
@@ -383,20 +291,19 @@
 
   // ---- keyboard, wheel -------------------------------------------------------
   addEventListener('keydown', e => {
-    if (document.body.classList.contains('on-cv')) { if (e.key === 'Escape') location.hash = ''; return; }
+    if (onCV()) { if (e.key === 'Escape') location.hash = ''; return; }
     if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(index + 1); }
     if (e.key === 'ArrowLeft') go(index - 1);
   });
   let wheelLock = false;
   addEventListener('wheel', e => {
-    if (document.body.classList.contains('on-cv')) return;
+    if (onCV()) return;
     const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     if (wheelLock || Math.abs(d) < 20) return;
     wheelLock = true; go(index + (d > 0 ? 1 : -1));
-    setTimeout(() => wheelLock = false, 900);
+    setTimeout(() => wheelLock = false, 650);
   }, { passive: true });
-  addEventListener('resize', () => { fit(); drawIris(); });
-  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { bladeCache = null; });
+  addEventListener('resize', measure);
 
   // ---- CV view (#cv) ---------------------------------------------------------
   const nav = document.getElementById('nav');
@@ -409,7 +316,7 @@
   addEventListener('hashchange', route);
   route();
 
-  swap(0);
+  measure();
 </script>
 </body>
 </html>
