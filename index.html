@@ -6,7 +6,7 @@
 <title>Kentaro Tsuji</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
-  /* Layout: one framed print, centered; the old one sinks into fog as the next surfaces in the same place. */
+  /* Layout: one framed print, centered, inside a slow drifting fog; a swipe parts the fog and the next print surfaces. */
   :root {
     --bg: #e8e6e1;
     --frame: #ffffff;
@@ -83,12 +83,9 @@
     pointer-events: none; -webkit-user-drag: none;
   }
   .print { will-change: transform, opacity, filter; }
-  .mist {
-    position: fixed; inset: 0; pointer-events: none; z-index: 2; opacity: 0;
-    background: radial-gradient(ellipse 55% 45% at 50% 52%, rgba(var(--mist), .9), rgba(var(--mist), .35) 55%, rgba(var(--mist), 0) 100%);
-  }
+  .fog { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
   .count {
-    position: fixed; left: 0; right: 0;
+    position: fixed; left: 0; right: 0; z-index: 4;
     bottom: max(calc(var(--gutter) / 2 - 4px), env(safe-area-inset-bottom, 0px));
     text-align: center; pointer-events: none;
     font-size: 11px; letter-spacing: .14em; color: var(--faint);
@@ -104,7 +101,7 @@
     padding-bottom: 80px;
     padding-left: max(20px, env(safe-area-inset-left, 0px));
     padding-right: max(20px, env(safe-area-inset-right, 0px));
-    background: var(--bg);
+    background: transparent;                     /* the fog keeps drifting behind the text */
     opacity: 0; visibility: hidden;
     transition: opacity .5s ease, visibility 0s linear .5s;
   }
@@ -128,7 +125,7 @@
   body.on-cv .cv li:nth-child(1) { transition-delay: .26s; }
   body.on-cv .cv li:nth-child(2) { transition-delay: .32s; }
   body.on-cv .cv li:nth-child(3) { transition-delay: .38s; }
-  body.on-cv .stage, body.on-cv .count, body.on-cv .mist { opacity: 0 !important; pointer-events: none; }
+  body.on-cv .stage, body.on-cv .count { opacity: 0 !important; pointer-events: none; }
 </style>
 </head>
 <body>
@@ -138,7 +135,7 @@
 </header>
 
 <main class="stage" id="stage" aria-roledescription="carousel" aria-label="Photographs"></main>
-<div class="mist" id="mist"></div>
+<canvas class="fog" id="fog"></canvas>
 <div class="count" id="count" aria-live="polite"></div>
 
 <section class="cv" id="cv" aria-label="CV">
@@ -169,7 +166,8 @@
 
   const stage = document.getElementById('stage');
   const count = document.getElementById('count');
-  const mist = document.getElementById('mist');
+  const fogEl = document.getElementById('fog');
+  const fctx = fogEl.getContext('2d');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
   const onCV = () => document.body.classList.contains('on-cv');
@@ -223,8 +221,6 @@
       const leaving = i === from;
       p.el.style.transform = `scale(${(leaving ? 1 + 0.03 * a : 1 - 0.035 * a).toFixed(4)})`;
     });
-    const frac = pos - Math.floor(pos);
-    mist.style.opacity = (Math.sin(Math.PI * clamp(frac, 0, 1)) * 0.55).toFixed(3);
   }
 
   // ---- spring ------------------------------------------------------------------
@@ -251,6 +247,7 @@
     target = index;
     vel += kick;
     setCount();
+    if (index !== from) reveal();
     wake();
   }
 
@@ -298,6 +295,7 @@
       index = clamp(i, 0, prints.length - 1);
       target = index;
       setCount();
+      if (index !== from) reveal();
       wake();
     } else if (!axis && e.type === 'pointerup') {
       go(index + (e.clientX > innerWidth / 3 ? 1 : -1));
@@ -305,6 +303,95 @@
   }
   stage.addEventListener('pointerup', end);
   stage.addEventListener('pointercancel', end);
+
+  // ---- fog ---------------------------------------------------------------------
+  // Soft banks drift across the whole site. At rest a veil sits over the print;
+  // a swipe parts it, and if nothing happens for a while it slowly closes again.
+  const FOG_SCALE = 0.25;                        // drawn small and stretched: the softness is free
+  let clear = 0, clearTo = 0, lastReveal = -1e9;
+  const banks = Array.from({ length: 16 }, () => ({
+    x: Math.random(), y: Math.random(),
+    r: 0.22 + Math.random() * 0.35,
+    vx: (0.4 + Math.random()) * 0.014 * (Math.random() < 0.8 ? 1 : -1), vy: (Math.random() - 0.5) * 0.006,
+    a: 0.22 + Math.random() * 0.26, ph: Math.random() * 6.28,
+  }));
+  let mistRGB = '250, 249, 246';
+  const readMist = () => { mistRGB = getComputedStyle(document.documentElement).getPropertyValue('--mist').trim() || mistRGB; };
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readMist);
+  readMist();
+
+  function sizeFog() {
+    fogEl.width = Math.max(2, Math.round(innerWidth * FOG_SCALE));
+    fogEl.height = Math.max(2, Math.round(innerHeight * FOG_SCALE));
+  }
+  function reveal() { clearTo = 1; lastReveal = performance.now(); }
+
+  let fogLast = performance.now();
+  function fogFrame(now) {
+    const dt = Math.min(0.05, (now - fogLast) / 1000); fogLast = now;
+    const W = fogEl.width, H = fogEl.height, M = Math.max(W, H);
+    if (now - lastReveal > 6000) clearTo = 0;
+    // parting is quick, closing is slow
+    clear += (clearTo - clear) * (1 - Math.exp(-dt * (clearTo > clear ? 2.4 : 0.22)));
+    // while a swipe is under way, the fog thins with it
+    const moving = Math.abs(pos - Math.round(pos)) * 2;
+    const c = reduced ? 1 : clamp(Math.max(clear, moving * 0.9), 0, 1);
+
+    fctx.globalCompositeOperation = 'source-over';
+    fctx.clearRect(0, 0, W, H);
+    const t = now / 1000;
+    for (const b of banks) {
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      if (b.x < -0.4) b.x += 1.8; if (b.x > 1.4) b.x -= 1.8;
+      if (b.y < -0.3) b.y += 1.6; if (b.y > 1.3) b.y -= 1.6;
+      const x = b.x * W, y = b.y * H, r = b.r * M;
+      const a = b.a * (0.75 + 0.25 * Math.sin(t * 0.13 + b.ph));
+      const g = fctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(${mistRGB}, ${a})`);
+      g.addColorStop(0.55, `rgba(${mistRGB}, ${a * 0.45})`);
+      g.addColorStop(1, `rgba(${mistRGB}, 0)`);
+      fctx.fillStyle = g;
+      fctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    // where the print hangs
+    const cur = prints[index];
+    let cx = W / 2, cy = H / 2, rx = W * 0.35, ry = H * 0.25;
+    if (cur && cur.loaded) {
+      const r = cur.el.getBoundingClientRect();
+      cx = (r.left + r.width / 2) * FOG_SCALE; cy = (r.top + r.height / 2) * FOG_SCALE;
+      rx = r.width * FOG_SCALE * 0.62; ry = r.height * FOG_SCALE * 0.62;
+    }
+    // the veil over the print, breathing a little
+    const veil = (1 - c) * (0.8 + 0.06 * Math.sin(t * 0.4));
+    if (veil > 0.01) {
+      fctx.save();
+      fctx.translate(cx, cy); fctx.scale(1, ry / rx);
+      const v = fctx.createRadialGradient(0, 0, 0, 0, 0, rx * 1.35);
+      v.addColorStop(0, `rgba(${mistRGB}, ${veil})`);
+      v.addColorStop(0.6, `rgba(${mistRGB}, ${veil * 0.85})`);
+      v.addColorStop(1, `rgba(${mistRGB}, 0)`);
+      fctx.fillStyle = v;
+      fctx.fillRect(-rx * 1.4, -rx * 1.4, rx * 2.8, rx * 2.8);
+      fctx.restore();
+    }
+    // the clearing: drifting banks are pushed back from the print
+    if (c > 0.01) {
+      fctx.globalCompositeOperation = 'destination-out';
+      fctx.save();
+      fctx.translate(cx, cy); fctx.scale(1, ry / rx);
+      const h = fctx.createRadialGradient(0, 0, 0, 0, 0, rx * 1.5);
+      h.addColorStop(0, `rgba(0,0,0,${0.95 * c})`);
+      h.addColorStop(0.62, `rgba(0,0,0,${0.85 * c})`);
+      h.addColorStop(1, 'rgba(0,0,0,0)');
+      fctx.fillStyle = h;
+      fctx.fillRect(-rx * 1.6, -rx * 1.6, rx * 3.2, rx * 3.2);
+      fctx.restore();
+      fctx.globalCompositeOperation = 'source-over';
+    }
+    requestAnimationFrame(fogFrame);
+  }
+  sizeFog();
+  requestAnimationFrame(fogFrame);
 
   // ---- keyboard, wheel -------------------------------------------------------
   addEventListener('keydown', e => {
@@ -320,7 +407,7 @@
     wheelLock = true; go(index + (d > 0 ? 1 : -1));
     setTimeout(() => wheelLock = false, 650);
   }, { passive: true });
-  addEventListener('resize', measure);
+  addEventListener('resize', () => { sizeFog(); measure(); });
 
   // ---- CV view (#cv) ---------------------------------------------------------
   const nav = document.getElementById('nav');
