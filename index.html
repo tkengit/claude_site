@@ -6,7 +6,7 @@
 <title>Kentaro Tsuji</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
-  /* Layout: one framed print at a time on a horizontal rail; the finger moves the rail directly. */
+  /* Layout: one framed print, centered; swiping it away breaks it into dust that drifts off. */
   :root {
     --bg: #e8e6e1;
     --frame: #ffffff;
@@ -52,7 +52,7 @@
   .head a { padding: 8px 0; transition: color .2s; }
   .head a:hover { color: var(--muted); }
 
-  /* ---- photo rail ---- */
+  /* ---- photo ---- */
   .stage {
     position: fixed; inset: 0;
     display: grid; place-items: center;
@@ -70,20 +70,17 @@
     padding: var(--pad);
     line-height: 0;
     box-shadow: 0 1px 2px rgba(var(--shadow), .08), 0 12px 34px -14px rgba(var(--shadow), .3);
-    will-change: transform;
     opacity: 0;
-    transition: opacity .6s ease;
+    visibility: hidden;
   }
-  .print.ready { opacity: 1; }
-  .window { overflow: hidden; }
-  .window img {
+  .print img {
     display: block;
     max-width: calc(100vw - 2 * var(--gutter) - 2 * var(--pad));
     max-height: calc(100dvh - max(var(--gutter), calc(var(--head) + env(safe-area-inset-top, 0px))) - var(--gutter) - 16px - 2 * var(--pad));
     width: auto; height: auto;
-    will-change: transform;
     pointer-events: none; -webkit-user-drag: none;
   }
+  .dust { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
   .count {
     position: fixed; left: 0; right: 0;
     bottom: max(calc(var(--gutter) / 2 - 4px), env(safe-area-inset-bottom, 0px));
@@ -125,7 +122,7 @@
   body.on-cv .cv li:nth-child(1) { transition-delay: .26s; }
   body.on-cv .cv li:nth-child(2) { transition-delay: .32s; }
   body.on-cv .cv li:nth-child(3) { transition-delay: .38s; }
-  body.on-cv .stage, body.on-cv .count { opacity: 0; pointer-events: none; }
+  body.on-cv .stage, body.on-cv .count, body.on-cv .dust { opacity: 0; pointer-events: none; }
 </style>
 </head>
 <body>
@@ -135,6 +132,7 @@
 </header>
 
 <main class="stage" id="stage" aria-roledescription="carousel" aria-label="Photographs"></main>
+<canvas class="dust" id="dust"></canvas>
 <div class="count" id="count" aria-live="polite"></div>
 
 <section class="cv" id="cv" aria-label="CV">
@@ -165,125 +163,193 @@
 
   const stage = document.getElementById('stage');
   const count = document.getElementById('count');
+  const dust = document.getElementById('dust');
+  const ctx = dust.getContext('2d');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
   const onCV = () => document.body.classList.contains('on-cv');
 
   // ---- prints ----------------------------------------------------------------
+  let index = 0;
   let prints = photos.map(id => {
     const el = document.createElement('figure');
     el.className = 'print';
-    const win = document.createElement('div');
-    win.className = 'window';
     const img = new Image();
     img.alt = '';
     img.decoding = 'async';
-    win.appendChild(img);
-    el.appendChild(win);
+    el.appendChild(img);
     stage.appendChild(el);
-    const p = { el, img, w: 0 };
-    img.onload = () => { el.classList.add('ready'); measure(); };
-    img.onerror = () => { el.remove(); prints = prints.filter(q => q !== p); index = clamp(index, 0, prints.length - 1); pos = index; measure(); };
+    const p = { el, img, loaded: false };
+    img.onload = () => { p.loaded = true; paint(); };
+    img.onerror = () => { el.remove(); prints = prints.filter(q => q !== p); index = clamp(index, 0, prints.length - 1); setCount(); paint(); };
     img.src = src(id);
     return p;
   });
-
-  // ---- motion state: pos is a continuous "which photo" (1.5 = halfway from 2nd to 3rd)
-  let index = 0, pos = 0, vel = 0, target = 0;
-  let S = 600;                                   // px between neighbouring prints
-  function measure() {
-    let maxW = 0;
-    for (const p of prints) { p.w = p.el.offsetWidth; maxW = Math.max(maxW, p.w); }
-    S = stage.clientWidth / 2 + maxW / 2 + 48;   // a neighbour waits just off screen
-    count.textContent = `${String(index + 1).padStart(2, '0')} / ${String(prints.length).padStart(2, '0')}`;
-    render();
+  function setCount(i = index) {
+    count.textContent = `${String(i + 1).padStart(2, '0')} / ${String(prints.length).padStart(2, '0')}`;
   }
 
-  function render() {
-    prints.forEach((p, i) => {
-      const d = i - pos;                         // -1 .. 0 .. 1 around the current print
-      const a = Math.abs(d);
-      if (a > 1.6) { p.el.style.visibility = 'hidden'; return; }
-      p.el.style.visibility = 'visible';
-      const x = d * S;
-      const s = 1 - 0.035 * Math.min(a, 1);      // prints ease back a touch as they leave
-      p.el.style.transform = `translate3d(${x}px,0,0) scale(${s})`;
-      // parallax: the photo drifts a little slower than its frame, so it feels set behind glass
-      const zoom = 1 + 0.08 * Math.min(a, 1);
-      const room = (p.w * (zoom - 1)) / 2;
-      const shift = -Math.sign(d) * Math.min(a * S * 0.05, room);
-      p.img.style.transform = `translate3d(${shift}px,0,0) scale(${zoom})`;
-    });
+  // ---- dust ------------------------------------------------------------------
+  // g is the progress of one print turning to dust: 0 whole .. 1 gone.
+  // Every grain's position is a pure function of g, so the effect can be scrubbed both ways.
+  let g = 0, run = null;                     // run: { from, to, dir, grains, sheet, rect }
+  const LIFE = 0.5;                          // how much of g one grain takes to fly off
+
+  function sizeCanvas() {
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    dust.width = Math.round(innerWidth * dpr); dust.height = Math.round(innerHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  // ---- spring ------------------------------------------------------------------
-  const K = reduced ? 900 : 180, D = reduced ? 60 : 25;   // just under critical: settles with no bounce you can see
-  let raf = 0, last = 0, holding = false;
-  function wake() { if (!raf) { last = performance.now(); raf = requestAnimationFrame(tick); } }
-  function tick(now) {
-    const dt = Math.min(1 / 30, (now - last) / 1000); last = now;
-    if (!holding) {
-      vel += (-K * (pos - target) - D * vel) * dt;
-      pos += vel * dt;
-      if (Math.abs(pos - target) < 0.0004 && Math.abs(vel) < 0.002) { pos = target; vel = 0; render(); raf = 0; return; }
+  function crumble(to, dir) {
+    const from = prints[index];
+    const r = from.el.getBoundingClientRect();
+    // a flat copy of the print (frame + photo) to cut grains from
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    const sheet = document.createElement('canvas');
+    sheet.width = Math.round(r.width * dpr); sheet.height = Math.round(r.height * dpr);
+    const sc = sheet.getContext('2d');
+    sc.scale(dpr, dpr);
+    sc.fillStyle = getComputedStyle(from.el).backgroundColor;
+    sc.fillRect(0, 0, r.width, r.height);
+    const ir = from.img.getBoundingClientRect();
+    if (from.loaded) sc.drawImage(from.img, ir.left - r.left, ir.top - r.top, ir.width, ir.height);
+
+    const cell = clamp(Math.round(Math.sqrt(r.width * r.height / 5200)), 3, 9);
+    const grains = [];
+    for (let y = 0; y < r.height; y += cell) {
+      for (let x = 0; x < r.width; x += cell) {
+        const u = x / r.width, v = y / r.height;
+        const lead = dir < 0 ? u : 1 - u;               // the edge the wind reaches first
+        grains.push({
+          x, y,
+          delay: lead * (1 - LIFE) * 0.82 + Math.random() * (1 - LIFE) * 0.18 + (Math.abs(v - 0.5) * 0.04),
+          vx: (90 + Math.random() * 260) * (0.6 + 0.4 * (1 - lead)),
+          vy: -30 - Math.random() * 110 + (v - 0.5) * 60,
+          lift: 20 + Math.random() * 70,
+          wob: Math.random() * 6.28, wa: 4 + Math.random() * 10,
+          spin: Math.random(),
+        });
+      }
     }
-    render();
-    raf = requestAnimationFrame(tick);
-  }
-  function go(i, kick = 0) {
-    if (i < 0 || i >= prints.length) kick += (i < 0 ? -1 : 1) * 0.9;   // the end of the rail: a soft bump
-    index = clamp(i, 0, prints.length - 1);
-    target = index;
-    vel += kick;
-    count.textContent = `${String(index + 1).padStart(2, '0')} / ${String(prints.length).padStart(2, '0')}`;
-    wake();
+    from.el.style.visibility = 'hidden';
+    run = { from, to, dir, grains, sheet, rect: r, cell, dpr };
   }
 
-  // ---- drag: 1:1 with the finger, then the flick carries on into the spring --------
+  function drawDust() {
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    if (!run) return;
+    const { grains, sheet, rect, cell, dir, dpr } = run;
+    const sw = cell * dpr;
+    for (const p of grains) {
+      const t = clamp((g - p.delay) / LIFE, 0, 1);
+      if (t >= 1) continue;
+      if (t <= 0) {                                      // still part of the print (a hair oversized: no seams)
+        ctx.globalAlpha = 1;
+        ctx.drawImage(sheet, p.x * dpr, p.y * dpr, sw, sw, rect.left + p.x, rect.top + p.y, cell + 0.6, cell + 0.6);
+        continue;
+      }
+      const e = t * t * (1.6 - 0.6 * t);                 // grains pick up speed as the wind takes them
+      const x = rect.left + p.x + dir * p.vx * e + Math.sin(p.wob + t * 5) * p.wa * t;
+      const y = rect.top + p.y + p.vy * e - p.lift * t * t;
+      const s = cell * (1 - 0.65 * t);
+      ctx.globalAlpha = Math.pow(1 - t, 1.3);
+      ctx.drawImage(sheet, p.x * dpr, p.y * dpr, sw, sw, x, y, s, s);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // what the DOM shows, given g
+  function paint() {
+    prints.forEach((p, i) => {
+      let o = 0;
+      if (run) {
+        if (p === run.to) o = smooth(0.25, 0.95, g);       // the next print comes up as the dust clears
+        if (p === run.from) o = 1;                          // (hidden: its grains are drawn instead)
+      } else if (i === index) o = 1;
+      p.el.style.opacity = p.loaded ? o : 0;
+      if (!run || p !== run.from) p.el.style.visibility = o > 0 ? 'visible' : 'hidden';
+      p.el.style.transform = run && p === run.to ? `scale(${0.985 + 0.015 * smooth(0.25, 1, g)})` : '';
+    });
+    drawDust();
+  }
+
+  // ---- animation ---------------------------------------------------------------
+  let anim = 0;
+  function tween(to, ms, done) {
+    cancelAnimationFrame(anim);
+    const g0 = g, t0 = performance.now();
+    const step = now => {
+      const k = clamp((now - t0) / ms, 0, 1);
+      const e = to > g0 ? 1 - Math.pow(1 - k, 1.6) : 1 - Math.pow(1 - k, 3);
+      g = g0 + (to - g0) * e;
+      paint();
+      if (k < 1) anim = requestAnimationFrame(step); else { anim = 0; done && done(); }
+    };
+    anim = requestAnimationFrame(step);
+  }
+  function finish() {                                        // the old print is gone: settle on the new one
+    index = prints.indexOf(run.to);
+    run.from.el.style.visibility = '';
+    run = null; g = 0;
+    setCount(); paint();
+  }
+  function restore() {                                       // the dust came back together
+    run.from.el.style.visibility = '';
+    run = null; g = 0;
+    paint();
+  }
+  function go(i) {
+    if (run || i < 0 || i >= prints.length || i === index) return;
+    if (reduced) { index = i; setCount(); paint(); return; }
+    crumble(prints[i], i > index ? -1 : 1);
+    setCount(i);
+    tween(1, 1500, finish);
+  }
+
+  // ---- drag: the print comes apart under your finger ---------------------------
   let drag = null;
   stage.addEventListener('pointerdown', e => {
-    if (e.button !== 0 || onCV()) return;
-    drag = { x0: e.clientX, y0: e.clientY, axis: null, p0: pos, hist: [{ x: e.clientX, t: performance.now() }] };
+    if (e.button !== 0 || onCV() || run) return;
+    drag = { x0: e.clientX, y0: e.clientY, axis: null, hist: [{ x: e.clientX, t: performance.now() }] };
     stage.setPointerCapture(e.pointerId);
   });
   stage.addEventListener('pointermove', e => {
     if (!drag) return;
     const dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
-    if (!drag.axis && Math.hypot(dx, dy) > 5) {
+    if (!drag.axis && Math.hypot(dx, dy) > 6) {
       drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-      if (drag.axis === 'x') { drag.x0 = e.clientX; drag.p0 = pos; }   // pick the rail up where it is, no jump
+      if (drag.axis === 'x') {
+        const dir = dx < 0 ? -1 : 1;
+        const i = index + (dx < 0 ? 1 : -1);
+        drag.end = i < 0 || i >= prints.length;               // nothing beyond: only the edge frays
+        crumble(drag.end ? null : prints[i], dir);
+        drag.dir = dir;
+      }
     }
     if (drag.axis !== 'x') return;
-    holding = true; vel = 0;
     stage.classList.add('dragging');
     drag.hist.push({ x: e.clientX, t: performance.now() });
     if (drag.hist.length > 5) drag.hist.shift();
-    let p = drag.p0 - (e.clientX - drag.x0) / S;
-    const lo = 0, hi = prints.length - 1;          // past either end the rail goes stiff
-    if (p < lo) p = lo - rubber(lo - p);
-    if (p > hi) p = hi + rubber(p - hi);
-    pos = p;
-    wake();
+    const along = Math.max(0, dx * drag.dir);                 // only movement in the starting direction counts
+    const q = along / (Math.min(innerWidth, 1000) * 0.75);
+    g = drag.end ? 0.12 * (1 - Math.exp(-q / 0.12)) : 0.72 * (1 - Math.exp(-q / 0.6));
+    paint();
   });
-  const rubber = o => 0.18 * (1 - Math.exp(-o / 0.18 * 0.55));
-
   function end(e) {
     if (!drag) return;
     stage.classList.remove('dragging');
-    const { axis, hist, p0 } = drag;
+    const { axis, hist, dir } = drag;
+    const ended = drag.end;
     drag = null;
-    if (axis === 'x') {
-      holding = false;
+    if (axis === 'x' && run) {
       const a = hist[0], b = hist[hist.length - 1];
-      const v = (b.x - a.x) / Math.max(12, b.t - a.t);        // px per ms, + = finger moving right
-      vel = -v * 1000 / S;                                   // hand the finger's speed to the spring
-      const from = Math.round(p0);
-      const projected = pos + vel * 0.16;                    // where the flick would carry it
-      let i = Math.round(projected);
-      i = clamp(i, from - 1, from + 1);                      // one photo per flick, never a skid
-      go(i);
+      const v = ((b.x - a.x) / Math.max(12, b.t - a.t)) * dir;   // speed in the swipe direction
+      if (!ended && (g > 0.22 || v > 0.4)) { setCount(prints.indexOf(run.to)); tween(1, 1300 * (1 - g * 0.5), finish); }
+      else tween(0, 520, restore);                              // let go early: the grains fly home
     } else if (!axis && e.type === 'pointerup') {
-      go(index + (e.clientX > innerWidth / 3 ? 1 : -1), 0);
+      go(index + (e.clientX > innerWidth / 3 ? 1 : -1));
     }
   }
   stage.addEventListener('pointerup', end);
@@ -301,9 +367,9 @@
     const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     if (wheelLock || Math.abs(d) < 20) return;
     wheelLock = true; go(index + (d > 0 ? 1 : -1));
-    setTimeout(() => wheelLock = false, 650);
+    setTimeout(() => wheelLock = false, 900);
   }, { passive: true });
-  addEventListener('resize', measure);
+  addEventListener('resize', () => { sizeCanvas(); paint(); });
 
   // ---- CV view (#cv) ---------------------------------------------------------
   const nav = document.getElementById('nav');
@@ -316,7 +382,9 @@
   addEventListener('hashchange', route);
   route();
 
-  measure();
+  sizeCanvas();
+  setCount();
+  paint();
 </script>
 </body>
 </html>
